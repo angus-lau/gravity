@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Generate synthetic campaign data for testing (no API required)."""
 import json
 import random
 from pathlib import Path
