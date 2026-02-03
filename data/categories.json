@@ -1,0 +1,164 @@
+{
+  "verticals": [
+    {
+      "id": "apparel_footwear",
+      "name": "Apparel & Footwear",
+      "categories": [
+        {"id": "running_shoes", "name": "Running Shoes", "keywords": ["marathon", "jogging", "trail running", "athletic shoes"]},
+        {"id": "casual_footwear", "name": "Casual Footwear", "keywords": ["sneakers", "loafers", "everyday shoes", "walking shoes"]},
+        {"id": "athletic_apparel", "name": "Athletic Apparel", "keywords": ["workout clothes", "gym wear", "sportswear", "activewear"]},
+        {"id": "formal_wear", "name": "Formal Wear", "keywords": ["suits", "dress shirts", "business attire", "professional clothing"]},
+        {"id": "outdoor_clothing", "name": "Outdoor Clothing", "keywords": ["hiking gear", "jackets", "rain gear", "camping clothes"]},
+        {"id": "fashion_accessories", "name": "Fashion Accessories", "keywords": ["bags", "belts", "scarves", "jewelry", "watches"]},
+        {"id": "sportswear", "name": "Sportswear", "keywords": ["jerseys", "team apparel", "athletic wear", "sports uniforms"]},
+        {"id": "winter_wear", "name": "Winter Wear", "keywords": ["coats", "boots", "gloves", "thermal clothing", "snow gear"]},
+        {"id": "swimwear", "name": "Swimwear", "keywords": ["bathing suits", "swim trunks", "bikinis", "rash guards"]},
+        {"id": "workwear", "name": "Workwear", "keywords": ["safety boots", "uniforms", "construction gear", "industrial clothing"]}
+      ]
+    },
+    {
+      "id": "electronics_tech",
+      "name": "Electronics & Tech",
+      "categories": [
+        {"id": "smartphones", "name": "Smartphones", "keywords": ["mobile phones", "cell phones", "iPhone", "Android", "Samsung"]},
+        {"id": "laptops", "name": "Laptops", "keywords": ["notebooks", "MacBook", "ultrabooks", "portable computers"]},
+        {"id": "headphones", "name": "Headphones", "keywords": ["earbuds", "wireless headphones", "AirPods", "noise cancelling"]},
+        {"id": "smart_home", "name": "Smart Home", "keywords": ["smart speakers", "home automation", "Alexa", "Google Home", "IoT"]},
+        {"id": "wearables", "name": "Wearables", "keywords": ["smartwatches", "fitness bands", "Apple Watch", "health trackers"]},
+        {"id": "cameras", "name": "Cameras", "keywords": ["DSLR", "mirrorless", "photography", "video cameras", "action cameras"]},
+        {"id": "gaming_devices", "name": "Gaming Devices", "keywords": ["consoles", "PlayStation", "Xbox", "Nintendo", "gaming PC"]},
+        {"id": "computer_accessories", "name": "Computer Accessories", "keywords": ["keyboards", "mice", "monitors", "webcams", "USB hubs"]},
+        {"id": "tablets", "name": "Tablets", "keywords": ["iPad", "Android tablets", "e-readers", "digital notepad"]},
+        {"id": "audio_equipment", "name": "Audio Equipment", "keywords": ["speakers", "soundbars", "amplifiers", "home theater"]}
+      ]
+    },
+    {
+      "id": "health_fitness",
+      "name": "Health & Fitness",
+      "categories": [
+        {"id": "gym_equipment", "name": "Gym Equipment", "keywords": ["weights", "dumbbells", "treadmills", "home gym", "exercise machines"]},
+        {"id": "supplements", "name": "Supplements", "keywords": ["protein powder", "vitamins", "pre-workout", "health supplements"]},
+        {"id": "fitness_trackers", "name": "Fitness Trackers", "keywords": ["activity monitors", "step counters", "heart rate monitors"]},
+        {"id": "yoga_gear", "name": "Yoga Gear", "keywords": ["yoga mats", "blocks", "straps", "meditation", "pilates"]},
+        {"id": "sports_nutrition", "name": "Sports Nutrition", "keywords": ["energy bars", "electrolytes", "recovery drinks", "meal replacements"]},
+        {"id": "recovery_tools", "name": "Recovery Tools", "keywords": ["foam rollers", "massage guns", "compression gear", "ice packs"]},
+        {"id": "exercise_machines", "name": "Exercise Machines", "keywords": ["ellipticals", "rowing machines", "stationary bikes", "stair climbers"]},
+        {"id": "workout_apparel", "name": "Workout Apparel", "keywords": ["compression wear", "sports bras", "training shoes", "sweat-wicking"]},
+        {"id": "health_monitors", "name": "Health Monitors", "keywords": ["blood pressure monitors", "glucose meters", "pulse oximeters", "smart scales"]},
+        {"id": "wellness_products", "name": "Wellness Products", "keywords": ["aromatherapy", "sleep aids", "stress relief", "self-care"]}
+      ]
+    },
+    {
+      "id": "travel_hospitality",
+      "name": "Travel & Hospitality",
+      "categories": [
+        {"id": "flights", "name": "Flights", "keywords": ["airfare", "airlines", "plane tickets", "flight booking", "air travel"]},
+        {"id": "hotels", "name": "Hotels", "keywords": ["accommodation", "resorts", "lodging", "hotel booking", "stays"]},
+        {"id": "vacation_packages", "name": "Vacation Packages", "keywords": ["travel deals", "all-inclusive", "holiday packages", "getaways"]},
+        {"id": "car_rentals", "name": "Car Rentals", "keywords": ["rental cars", "vehicle hire", "airport rentals", "road trips"]},
+        {"id": "travel_insurance", "name": "Travel Insurance", "keywords": ["trip protection", "travel coverage", "cancellation insurance"]},
+        {"id": "luggage", "name": "Luggage", "keywords": ["suitcases", "carry-on", "travel bags", "backpacks", "duffel bags"]},
+        {"id": "travel_accessories", "name": "Travel Accessories", "keywords": ["neck pillows", "adapters", "packing cubes", "toiletry bags"]},
+        {"id": "tours", "name": "Tours", "keywords": ["guided tours", "excursions", "sightseeing", "local experiences", "day trips"]},
+        {"id": "cruises", "name": "Cruises", "keywords": ["cruise ships", "ocean cruises", "river cruises", "cruise vacations"]},
+        {"id": "adventure_travel", "name": "Adventure Travel", "keywords": ["hiking trips", "safaris", "extreme sports", "outdoor adventures"]}
+      ]
+    },
+    {
+      "id": "financial_services",
+      "name": "Financial Services",
+      "categories": [
+        {"id": "credit_cards", "name": "Credit Cards", "keywords": ["rewards cards", "cashback", "travel cards", "balance transfer"]},
+        {"id": "personal_loans", "name": "Personal Loans", "keywords": ["installment loans", "debt consolidation", "personal financing"]},
+        {"id": "investment_services", "name": "Investment Services", "keywords": ["stocks", "bonds", "mutual funds", "brokerage", "trading"]},
+        {"id": "insurance", "name": "Insurance", "keywords": ["life insurance", "health insurance", "coverage", "policies"]},
+        {"id": "banking", "name": "Banking", "keywords": ["savings accounts", "checking accounts", "online banking", "mobile banking"]},
+        {"id": "mortgages", "name": "Mortgages", "keywords": ["home loans", "refinancing", "mortgage rates", "home buying"]},
+        {"id": "retirement_planning", "name": "Retirement Planning", "keywords": ["401k", "IRA", "pension", "retirement savings"]},
+        {"id": "tax_services", "name": "Tax Services", "keywords": ["tax preparation", "tax filing", "accountants", "tax software"]},
+        {"id": "business_finance", "name": "Business Finance", "keywords": ["business loans", "merchant services", "commercial banking"]},
+        {"id": "cryptocurrency", "name": "Cryptocurrency", "keywords": ["Bitcoin", "Ethereum", "crypto trading", "blockchain", "digital assets"]}
+      ]
+    },
+    {
+      "id": "food_beverage",
+      "name": "Food & Beverage",
+      "categories": [
+        {"id": "restaurants", "name": "Restaurants", "keywords": ["dining", "eateries", "food delivery", "takeout", "reservations"]},
+        {"id": "meal_delivery", "name": "Meal Delivery", "keywords": ["meal kits", "food subscription", "prepared meals", "DoorDash", "Uber Eats"]},
+        {"id": "groceries", "name": "Groceries", "keywords": ["grocery delivery", "supermarket", "food shopping", "fresh produce"]},
+        {"id": "coffee_tea", "name": "Coffee & Tea", "keywords": ["espresso", "coffee beans", "tea leaves", "cafe", "brewing"]},
+        {"id": "alcoholic_beverages", "name": "Alcoholic Beverages", "keywords": ["wine", "beer", "spirits", "cocktails", "liquor"]},
+        {"id": "snacks", "name": "Snacks", "keywords": ["chips", "nuts", "healthy snacks", "protein bars", "treats"]},
+        {"id": "organic_foods", "name": "Organic Foods", "keywords": ["natural foods", "farm fresh", "non-GMO", "health foods"]},
+        {"id": "specialty_foods", "name": "Specialty Foods", "keywords": ["gourmet", "artisan", "international foods", "delicacies"]},
+        {"id": "cooking_equipment", "name": "Cooking Equipment", "keywords": ["cookware", "kitchen appliances", "utensils", "bakeware"]},
+        {"id": "dietary_products", "name": "Dietary Products", "keywords": ["gluten-free", "vegan", "keto", "low-carb", "diet foods"]}
+      ]
+    },
+    {
+      "id": "automotive",
+      "name": "Automotive",
+      "categories": [
+        {"id": "new_cars", "name": "New Cars", "keywords": ["car dealerships", "new vehicles", "car buying", "auto sales"]},
+        {"id": "used_cars", "name": "Used Cars", "keywords": ["pre-owned", "certified used", "second-hand cars", "car lots"]},
+        {"id": "auto_parts", "name": "Auto Parts", "keywords": ["car parts", "replacement parts", "OEM", "aftermarket parts"]},
+        {"id": "car_insurance", "name": "Car Insurance", "keywords": ["auto insurance", "vehicle coverage", "liability", "comprehensive"]},
+        {"id": "maintenance_services", "name": "Maintenance Services", "keywords": ["oil change", "car repair", "mechanics", "auto service"]},
+        {"id": "tires", "name": "Tires", "keywords": ["car tires", "tire replacement", "wheels", "tire installation"]},
+        {"id": "car_accessories", "name": "Car Accessories", "keywords": ["floor mats", "seat covers", "car electronics", "detailing"]},
+        {"id": "electric_vehicles", "name": "Electric Vehicles", "keywords": ["EVs", "Tesla", "charging stations", "hybrid cars"]},
+        {"id": "motorcycles", "name": "Motorcycles", "keywords": ["bikes", "motorbikes", "scooters", "motorcycle gear"]},
+        {"id": "auto_financing", "name": "Auto Financing", "keywords": ["car loans", "auto leasing", "vehicle financing", "APR"]}
+      ]
+    },
+    {
+      "id": "entertainment_media",
+      "name": "Entertainment & Media",
+      "categories": [
+        {"id": "streaming_services", "name": "Streaming Services", "keywords": ["Netflix", "Disney+", "Hulu", "video streaming", "TV shows"]},
+        {"id": "gaming", "name": "Gaming", "keywords": ["video games", "PC games", "mobile games", "esports", "game downloads"]},
+        {"id": "music", "name": "Music", "keywords": ["Spotify", "Apple Music", "albums", "concerts", "music streaming"]},
+        {"id": "movies", "name": "Movies", "keywords": ["cinema", "film", "movie tickets", "box office", "theatrical releases"]},
+        {"id": "books", "name": "Books", "keywords": ["e-books", "audiobooks", "reading", "Kindle", "literature"]},
+        {"id": "events", "name": "Events", "keywords": ["tickets", "live events", "festivals", "shows", "performances"]},
+        {"id": "concerts", "name": "Concerts", "keywords": ["live music", "music festivals", "tour dates", "concert tickets"]},
+        {"id": "sports", "name": "Sports", "keywords": ["sports tickets", "live sports", "ESPN", "sports betting", "fantasy sports"]},
+        {"id": "podcasts", "name": "Podcasts", "keywords": ["audio shows", "podcast apps", "talk shows", "interviews"]},
+        {"id": "news_subscriptions", "name": "News Subscriptions", "keywords": ["digital news", "newspapers", "magazines", "journalism"]}
+      ]
+    },
+    {
+      "id": "education_learning",
+      "name": "Education & Learning",
+      "categories": [
+        {"id": "online_courses", "name": "Online Courses", "keywords": ["e-learning", "Coursera", "Udemy", "online classes", "MOOCs"]},
+        {"id": "tutoring", "name": "Tutoring", "keywords": ["private tutors", "homework help", "academic support", "test prep"]},
+        {"id": "language_learning", "name": "Language Learning", "keywords": ["Duolingo", "language apps", "foreign languages", "ESL"]},
+        {"id": "professional_certifications", "name": "Professional Certifications", "keywords": ["certifications", "credentials", "professional development"]},
+        {"id": "test_prep", "name": "Test Prep", "keywords": ["SAT", "GRE", "GMAT", "exam preparation", "practice tests"]},
+        {"id": "educational_software", "name": "Educational Software", "keywords": ["learning apps", "educational games", "study tools"]},
+        {"id": "college_programs", "name": "College Programs", "keywords": ["universities", "degrees", "higher education", "admissions"]},
+        {"id": "skills_training", "name": "Skills Training", "keywords": ["bootcamps", "coding courses", "technical training", "workshops"]},
+        {"id": "childrens_education", "name": "Children's Education", "keywords": ["kids learning", "educational toys", "preschool", "K-12"]},
+        {"id": "career_development", "name": "Career Development", "keywords": ["job training", "resume building", "career coaching", "interviews"]}
+      ]
+    },
+    {
+      "id": "home_garden",
+      "name": "Home & Garden",
+      "categories": [
+        {"id": "furniture", "name": "Furniture", "keywords": ["sofas", "tables", "chairs", "bedroom furniture", "home furnishings"]},
+        {"id": "home_decor", "name": "Home Decor", "keywords": ["wall art", "rugs", "curtains", "decorations", "interior design"]},
+        {"id": "kitchen_appliances", "name": "Kitchen Appliances", "keywords": ["refrigerators", "ovens", "microwaves", "dishwashers", "blenders"]},
+        {"id": "garden_tools", "name": "Garden Tools", "keywords": ["lawn mowers", "gardening equipment", "landscaping", "outdoor tools"]},
+        {"id": "home_improvement", "name": "Home Improvement", "keywords": ["renovations", "DIY", "power tools", "building materials"]},
+        {"id": "cleaning_products", "name": "Cleaning Products", "keywords": ["household cleaners", "vacuums", "mops", "laundry supplies"]},
+        {"id": "smart_home_devices", "name": "Smart Home Devices", "keywords": ["thermostats", "security cameras", "smart locks", "lighting"]},
+        {"id": "bedding", "name": "Bedding", "keywords": ["mattresses", "sheets", "pillows", "comforters", "sleep products"]},
+        {"id": "outdoor_furniture", "name": "Outdoor Furniture", "keywords": ["patio sets", "garden furniture", "outdoor seating", "deck furniture"]},
+        {"id": "storage_solutions", "name": "Storage Solutions", "keywords": ["organizers", "shelving", "closet systems", "containers"]}
+      ]
+    }
+  ]
+}
