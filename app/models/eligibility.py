@@ -1,70 +1,29 @@
-import os
-import re
 from functools import lru_cache
 
+import numpy as np
 import torch
 from optimum.onnxruntime import ORTModelForSequenceClassification
 from transformers import AutoTokenizer
 
-DISTILBERT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
-DEFAULT_MODE = os.getenv("ELIGIBILITY_MODE", "rule-based")  # "rule-based" or "distilbert"
+from app.models.embeddings import EmbeddingModel
 
-BLOCKLIST_CRITICAL = [
-    r"\b(suicide|suicidal|self[- ]?harm|end my life|kill myself|kill me)\b",
-    r"\bthoughts of (death|dying|suicide|self[- ]?harm)\b",
-    r"\bhow to (make|build|create).*(bomb|explosive|weapon|gun)\b",
-    r"\b(pipe bomb|homemade bomb|improvised explosive)\b",
+# Models for ML-based eligibility scoring
+TOXICITY_MODEL = "martin-ha/toxic-comment-model"
+SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
+
+# Semantic anchors for dangerous content detection via embeddings
+# These represent categories - the embedding model generalizes to similar content
+DANGEROUS_ANCHORS = [
+    "instructions for making weapons bombs and explosives",
+    "how to harm hurt or kill people violently",
+    "self-harm suicide methods and ways to end life",
+    "illegal drug manufacturing and distribution",
 ]
 
-BLOCKLIST_SEVERE = [
-    # Violence
-    r"\b(murder|assassinate|hurt someone|harm someone|attack someone)\b",
-    r"\bkill (someone|people|person|him|her|them|a |the )\b",
-    # Tragedy/Death
-    r"\b(mom|dad|mother|father|parent|wife|husband|child|son|daughter|friend|pet).*(died|passed away|death|killed)\b",
-    r"\b(died|passed away|death of|funeral for|lost my)\b",
-    r"\b(cancer|terminal illness|terminally ill)\b",
-    r"\b(tragedy|tragic accident|devastating loss)\b",
-    r"\b(burned down|destroyed|lost everything)\b",
-    # NSFW
-    r"\b(porn|pornography|nsfw|explicit|xxx|adult content|hentai)\b",
-    r"\bwatch.*(porn|xxx|adult)\b",
-    # Hate speech
-    r"\b(hate|kill|deport|ban) (all )?(immigrants?|muslims?|jews?|blacks?|whites?|gays?|mexicans?|asians?)\b",
-    r"\b(racist|racism|bigot|nazi|white supremac|antisemit)\b",
-    r"\b(slur|ethnic cleansing|genocide)\b",
-    r"\b(terroris[mt]|jihadis[mt]|extremis[mt])\b",
-]
-
-COMMERCIAL_SIGNALS = [
-    r"\b(buy|purchase|shop|order|deal|discount|sale|price|cheap|affordable)\b",
-    r"\b(best|top|recommend|review|compare|vs|versus|rated)\b",
-    r"\b(need|want|looking for|searching for|find|get)\b",
-    r"\b(where to|how to get|where can i|where do i)\b",
-    r"\b(flights?|hotels?|restaurants?|stores?|brands?)\b",
-    r"\b(iphone|samsung|galaxy|pixel|laptop|headphones?|shoes?|sneakers?|coffee)\b",
-    r"\b(upgrade|organic|wireless|programming|hawaii)\b",
-    r"\b(recommendations?|under \$|\$\d+)\b",
-    r"\biphone \d+|samsung s\d+\b",
-    r"\bfor (flat feet|running|travel|work|home|kids|women|men)\b",
-]
-
-INFORMATIONAL_SIGNALS = [
-    r"\b(why|how|what|when|where|who)\b.*\??\s*$",
-    r"\b(history|explain|understand|learn)\b",
-    r"\b(runners?|athletes?|performance|training)\b",
-]
-
-# Sensitive topics - not blocked, but lower ad eligibility
-SENSITIVE_SIGNALS = [
-    r"\b(unemployment|laid off|fired|job loss|lost my job)\b",
-    r"\b(stressed|anxious|depressed|overwhelmed|struggling)\b",
-    r"\b(divorce|separation|breakup|broke up)\b",
-    r"\b(debt|bankruptcy|foreclosure|eviction)\b",
-    r"\b(illness|sick|diagnosed|hospital|surgery)\b",
-    r"\b(grieving|mourning|loss of)\b",
-    r"\b(addiction|rehab|recovery|sober)\b",
-    r"\b(abuse|assault|victim|trauma)\b",
+SAFE_ANCHORS = [
+    "shopping for products and services online",
+    "learning about history science and education",
+    "everyday questions tasks and information",
 ]
 
 
@@ -73,82 +32,128 @@ class EligibilityClassifier:
     _cache: dict[str, float] = {}
     _cache_max_size: int = 10000
 
-    def __init__(self, mode: str = DEFAULT_MODE):
-        self.mode = mode
-        self._blocklist_critical = [re.compile(p, re.IGNORECASE) for p in BLOCKLIST_CRITICAL]
-        self._blocklist_severe = [re.compile(p, re.IGNORECASE) for p in BLOCKLIST_SEVERE]
-        self._commercial_re = [re.compile(p, re.IGNORECASE) for p in COMMERCIAL_SIGNALS]
-        self._informational_re = [re.compile(p, re.IGNORECASE) for p in INFORMATIONAL_SIGNALS]
-        self._sensitive_re = [re.compile(p, re.IGNORECASE) for p in SENSITIVE_SIGNALS]
+    # Thresholds for scoring
+    DANGER_BLOCK_THRESHOLD = 0.4  # Block if danger_diff exceeds this
+    TOXICITY_BLOCK_THRESHOLD = 0.8  # Block if toxicity exceeds this
+    TOXICITY_HIGH_THRESHOLD = 0.5  # High toxicity threshold for strong penalty
+    DANGER_PENALTY_WEIGHT = 0.4  # How much danger similarity reduces score
+    TOXICITY_PENALTY_WEIGHT = 0.5  # How much toxicity reduces score
+    SENTIMENT_BOOST_WEIGHT = 0.3  # How much positive sentiment boosts score (only applied if low toxicity)
 
-        if mode == "distilbert":
-            self._tokenizer = AutoTokenizer.from_pretrained(DISTILBERT_MODEL)
-            self._model = ORTModelForSequenceClassification.from_pretrained(
-                DISTILBERT_MODEL,
-                export=True,
-                provider="CPUExecutionProvider",
-            )
-            self._id2label = self._model.config.id2label
+    def __init__(self):
+        # Load embedding model for danger detection
+        self._embedding_model = EmbeddingModel.get_instance()
+        self._dangerous_embs = [
+            self._embedding_model.encode(a).flatten() for a in DANGEROUS_ANCHORS
+        ]
+        self._safe_embs = [
+            self._embedding_model.encode(a).flatten() for a in SAFE_ANCHORS
+        ]
+
+        # Load toxicity model (for hate speech, threats)
+        self._toxicity_tokenizer = AutoTokenizer.from_pretrained(TOXICITY_MODEL)
+        self._toxicity_model = ORTModelForSequenceClassification.from_pretrained(
+            TOXICITY_MODEL,
+            export=True,
+            provider="CPUExecutionProvider",
+        )
+
+        # Load sentiment model (for commercial intent)
+        self._sentiment_tokenizer = AutoTokenizer.from_pretrained(SENTIMENT_MODEL)
+        self._sentiment_model = ORTModelForSequenceClassification.from_pretrained(
+            SENTIMENT_MODEL,
+            export=True,
+            provider="CPUExecutionProvider",
+        )
+        self._sentiment_id2label = self._sentiment_model.config.id2label
 
     @classmethod
-    def get_instance(cls, mode: str = DEFAULT_MODE) -> "EligibilityClassifier":
+    def get_instance(cls) -> "EligibilityClassifier":
         if cls._instance is None:
-            cls._instance = cls(mode=mode)
+            cls._instance = cls()
         return cls._instance
 
-    def _check_blocklist(self, text: str) -> float | None:
-        for pattern in self._blocklist_critical:
-            if pattern.search(text):
-                return 0.0  # Critical: never show ads
-        for pattern in self._blocklist_severe:
-            if pattern.search(text):
-                return 0.0  # Severe: never show ads
-        return None
+    @staticmethod
+    def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def _count_commercial_signals(self, text: str) -> int:
-        return sum(1 for p in self._commercial_re if p.search(text))
+    def _get_danger_score(self, query: str) -> tuple[float, float]:
+        """
+        Returns (max_danger_sim, max_safe_sim) using embedding similarity.
+        Higher danger_sim and lower safe_sim indicates more dangerous content.
+        """
+        q_emb = self._embedding_model.encode(query).flatten()
+        max_danger = max(self._cosine_sim(q_emb, d) for d in self._dangerous_embs)
+        max_safe = max(self._cosine_sim(q_emb, s) for s in self._safe_embs)
+        return max_danger, max_safe
 
-    def _count_informational_signals(self, text: str) -> int:
-        return sum(1 for p in self._informational_re if p.search(text))
-
-    def _count_sensitive_signals(self, text: str) -> int:
-        return sum(1 for p in self._sensitive_re if p.search(text))
-
-    def _get_sentiment_score(self, query: str) -> float:
-        inputs = self._tokenizer(
+    def _get_toxicity_score(self, query: str) -> float:
+        """Returns toxicity score from 0.0 (safe) to 1.0 (toxic)."""
+        inputs = self._toxicity_tokenizer(
             query[:512], return_tensors="pt", truncation=True, max_length=512
         )
-        outputs = self._model(**inputs)
+        outputs = self._toxicity_model(**inputs)
+        probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+        return probs[0][1].item()
+
+    def _get_sentiment_score(self, query: str) -> float:
+        """Returns sentiment score from 0.0 (negative) to 1.0 (positive)."""
+        inputs = self._sentiment_tokenizer(
+            query[:512], return_tensors="pt", truncation=True, max_length=512
+        )
+        outputs = self._sentiment_model(**inputs)
         probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
         pred_idx = probs.argmax(dim=-1).item()
-        label = self._id2label[pred_idx]
+        label = self._sentiment_id2label[pred_idx]
         score = probs[0][pred_idx].item()
         return score if label == "POSITIVE" else 1 - score
 
     def score(self, query: str) -> float:
+        """
+        Score ad eligibility using hybrid ML approach:
+        1. Embedding similarity detects dangerous instructions (bombs, weapons, etc.)
+        2. Toxicity model detects hate speech and threats
+        3. Sentiment model boosts commercial/positive queries
+
+        Returns 0.0-1.0 where:
+        - 1.0 = highly appropriate to show ads
+        - 0.0 = do not show ads
+        """
         normalized = query.lower().strip()
         if normalized in self._cache:
             return self._cache[normalized]
 
-        blocklist_score = self._check_blocklist(query)
-        if blocklist_score is not None:
-            return blocklist_score
+        # Get danger score via embedding similarity
+        danger_sim, safe_sim = self._get_danger_score(query)
+        danger_diff = danger_sim - safe_sim
 
-        commercial_count = self._count_commercial_signals(query)
-        informational_count = self._count_informational_signals(query)
-        sensitive_count = self._count_sensitive_signals(query)
+        # Get toxicity and sentiment scores
+        toxicity = self._get_toxicity_score(query)
+        sentiment = self._get_sentiment_score(query)
 
-        commercial_boost = min(commercial_count * 0.15, 0.50)
-        informational_boost = min(informational_count * 0.10, 0.25)
-        sensitive_penalty = min(sensitive_count * 0.15, 0.35)
-
-        if self.mode == "distilbert":
-            sentiment_score = self._get_sentiment_score(query)
-            base_score = 0.5 + (sentiment_score - 0.5) * 0.2 + commercial_boost + informational_boost - sensitive_penalty
+        # Block ads for clearly dangerous or toxic content
+        if danger_diff > self.DANGER_BLOCK_THRESHOLD:
+            score = 0.0
+        elif toxicity > self.TOXICITY_BLOCK_THRESHOLD:
+            score = 0.0
         else:
-            base_score = 0.5 + commercial_boost + informational_boost - sensitive_penalty
+            # Calculate eligibility score
+            # Start at neutral, apply penalties and boosts
+            base_score = 0.5
 
-        score = max(0.0, min(1.0, base_score))
+            # Penalize based on danger similarity (if positive diff)
+            if danger_diff > 0:
+                base_score -= danger_diff * self.DANGER_PENALTY_WEIGHT
+
+            # Penalize based on toxicity
+            base_score -= toxicity * self.TOXICITY_PENALTY_WEIGHT
+
+            # Only boost based on sentiment if content is NOT toxic
+            # This prevents toxic content from being boosted by misleading sentiment
+            if toxicity < self.TOXICITY_HIGH_THRESHOLD and sentiment > 0.5:
+                base_score += (sentiment - 0.5) * self.SENTIMENT_BOOST_WEIGHT
+
+            score = max(0.0, min(1.0, base_score))
 
         if len(self._cache) < self._cache_max_size:
             self._cache[normalized] = score
