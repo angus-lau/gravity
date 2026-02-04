@@ -117,15 +117,13 @@ def print_results(latencies: list[float]):
 def main():
     parser = argparse.ArgumentParser(description="Benchmark ad retrieval API")
     parser.add_argument("-n", "--requests", type=int, default=100, help="Number of requests")
-    parser.add_argument("-c", "--concurrency", type=int, default=10, help="Concurrent requests")
     parser.add_argument("--url", type=str, default=BASE_URL, help="API base URL")
     args = parser.parse_args()
 
     print(f"Benchmarking {args.url}")
     print(f"  requests: {args.requests}")
-    print(f"  concurrency: {args.concurrency}")
 
-    latencies = asyncio.run(run_benchmark(args.requests, args.concurrency, args.url))
+    latencies = asyncio.run(run_benchmark(args.requests, 1, args.url))
     print_results(latencies)
 
 
