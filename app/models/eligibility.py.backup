@@ -1,0 +1,105 @@
+import re
+from functools import lru_cache
+
+from transformers import pipeline
+
+MODEL_NAME = "distilbert-base-uncased-finetuned-sst-2-english"
+
+BLOCKLIST_CRITICAL = [
+    r"\b(suicide|self[- ]?harm|end my life|kill myself|kill me)\b",
+]
+
+BLOCKLIST_SEVERE = [
+    r"\b(bomb|explosives?|weapon|poison|kill|murder|hurt someone|harm someone|attack)\b",
+    r"\bhow to (make|build).*(bomb|explosive|weapon)\b",
+    r"\b(died|passed away|death|funeral|cancer|terminal|tragedy)\b",
+    r"\b(burned down|destroyed|lost everything)\b",
+    r"\b(porn|nsfw|explicit|xxx|adult content|pornographic?)\b",
+]
+
+COMMERCIAL_SIGNALS = [
+    r"\b(buy|purchase|shop|order|deal|discount|sale|price|cheap|affordable)\b",
+    r"\b(best|top|recommend|review|compare|vs|versus)\b",
+    r"\b(need|want|looking for|searching for|find)\b",
+    r"\b(where to|how to get|where can i|where do i)\b",
+    r"\b(flights?|hotels?|restaurants?|stores?)\b",
+    r"\b(iphone|samsung|galaxy|pixel|laptop|headphones?|shoes?|coffee)\b",
+    r"\b(upgrade|organic|wireless|programming|hawaii)\b",
+    r"\b(recommendations?|under \$)\b",
+    r"\biphone \d+|samsung s\d+\b",
+]
+
+INFORMATIONAL_SIGNALS = [
+    r"\b(why|how|what|when|where|who)\b.*\??\s*$",
+    r"\b(history|explain|understand|learn)\b",
+    r"\b(runners?|athletes?|performance|training)\b",
+]
+
+
+class EligibilityClassifier:
+    _instance: "EligibilityClassifier | None" = None
+    _cache: dict[str, float] = {}
+    _cache_max_size: int = 10000
+
+    def __init__(self):
+        self.classifier = pipeline(
+            "text-classification",
+            model=MODEL_NAME,
+            truncation=True,
+            max_length=512,
+        )
+        self._blocklist_critical = [re.compile(p, re.IGNORECASE) for p in BLOCKLIST_CRITICAL]
+        self._blocklist_severe = [re.compile(p, re.IGNORECASE) for p in BLOCKLIST_SEVERE]
+        self._commercial_re = [re.compile(p, re.IGNORECASE) for p in COMMERCIAL_SIGNALS]
+        self._informational_re = [re.compile(p, re.IGNORECASE) for p in INFORMATIONAL_SIGNALS]
+
+    @classmethod
+    def get_instance(cls) -> "EligibilityClassifier":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def _check_blocklist(self, text: str) -> float | None:
+        for pattern in self._blocklist_critical:
+            if pattern.search(text):
+                return 0.01
+        for pattern in self._blocklist_severe:
+            if pattern.search(text):
+                return 0.05
+        return None
+
+    def _count_commercial_signals(self, text: str) -> int:
+        return sum(1 for p in self._commercial_re if p.search(text))
+
+    def _count_informational_signals(self, text: str) -> int:
+        return sum(1 for p in self._informational_re if p.search(text))
+
+    def score(self, query: str) -> float:
+        normalized = query.lower().strip()
+        if normalized in self._cache:
+            return self._cache[normalized]
+
+        blocklist_score = self._check_blocklist(query)
+        if blocklist_score is not None:
+            return blocklist_score
+
+        result = self.classifier(query[:512])[0]
+        sentiment_score = result["score"] if result["label"] == "POSITIVE" else 1 - result["score"]
+
+        commercial_count = self._count_commercial_signals(query)
+        informational_count = self._count_informational_signals(query)
+
+        commercial_boost = min(commercial_count * 0.12, 0.45)
+        informational_boost = min(informational_count * 0.08, 0.2)
+
+        base_score = 0.5 + (sentiment_score - 0.5) * 0.2 + commercial_boost + informational_boost
+        score = max(0.0, min(1.0, base_score))
+
+        if len(self._cache) < self._cache_max_size:
+            self._cache[normalized] = score
+        return score
+
+
+@lru_cache(maxsize=1)
+def get_eligibility_classifier() -> EligibilityClassifier:
+    return EligibilityClassifier.get_instance()
