@@ -10,27 +10,43 @@ DISTILBERT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
 DEFAULT_MODE = os.getenv("ELIGIBILITY_MODE", "rule-based")  # "rule-based" or "distilbert"
 
 BLOCKLIST_CRITICAL = [
-    r"\b(suicide|self[- ]?harm|end my life|kill myself|kill me)\b",
+    r"\b(suicide|suicidal|self[- ]?harm|end my life|kill myself|kill me)\b",
+    r"\bthoughts of (death|dying|suicide|self[- ]?harm)\b",
+    r"\bhow to (make|build|create).*(bomb|explosive|weapon|gun)\b",
+    r"\b(pipe bomb|homemade bomb|improvised explosive)\b",
 ]
 
 BLOCKLIST_SEVERE = [
-    r"\b(bomb|explosives?|weapon|poison|kill|murder|hurt someone|harm someone|attack)\b",
-    r"\bhow to (make|build).*(bomb|explosive|weapon)\b",
-    r"\b(died|passed away|death|funeral|cancer|terminal|tragedy)\b",
+    # Violence
+    r"\b(murder|assassinate|hurt someone|harm someone|attack someone)\b",
+    r"\bkill (someone|people|person|him|her|them|a |the )\b",
+    # Tragedy/Death
+    r"\b(mom|dad|mother|father|parent|wife|husband|child|son|daughter|friend|pet).*(died|passed away|death|killed)\b",
+    r"\b(died|passed away|death of|funeral for|lost my)\b",
+    r"\b(cancer|terminal illness|terminally ill)\b",
+    r"\b(tragedy|tragic accident|devastating loss)\b",
     r"\b(burned down|destroyed|lost everything)\b",
-    r"\b(porn|nsfw|explicit|xxx|adult content|pornographic?)\b",
+    # NSFW
+    r"\b(porn|pornography|nsfw|explicit|xxx|adult content|hentai)\b",
+    r"\bwatch.*(porn|xxx|adult)\b",
+    # Hate speech
+    r"\b(hate|kill|deport|ban) (all )?(immigrants?|muslims?|jews?|blacks?|whites?|gays?|mexicans?|asians?)\b",
+    r"\b(racist|racism|bigot|nazi|white supremac|antisemit)\b",
+    r"\b(slur|ethnic cleansing|genocide)\b",
+    r"\b(terroris[mt]|jihadis[mt]|extremis[mt])\b",
 ]
 
 COMMERCIAL_SIGNALS = [
     r"\b(buy|purchase|shop|order|deal|discount|sale|price|cheap|affordable)\b",
-    r"\b(best|top|recommend|review|compare|vs|versus)\b",
-    r"\b(need|want|looking for|searching for|find)\b",
+    r"\b(best|top|recommend|review|compare|vs|versus|rated)\b",
+    r"\b(need|want|looking for|searching for|find|get)\b",
     r"\b(where to|how to get|where can i|where do i)\b",
-    r"\b(flights?|hotels?|restaurants?|stores?)\b",
-    r"\b(iphone|samsung|galaxy|pixel|laptop|headphones?|shoes?|coffee)\b",
+    r"\b(flights?|hotels?|restaurants?|stores?|brands?)\b",
+    r"\b(iphone|samsung|galaxy|pixel|laptop|headphones?|shoes?|sneakers?|coffee)\b",
     r"\b(upgrade|organic|wireless|programming|hawaii)\b",
-    r"\b(recommendations?|under \$)\b",
+    r"\b(recommendations?|under \$|\$\d+)\b",
     r"\biphone \d+|samsung s\d+\b",
+    r"\bfor (flat feet|running|travel|work|home|kids|women|men)\b",
 ]
 
 INFORMATIONAL_SIGNALS = [
@@ -83,10 +99,10 @@ class EligibilityClassifier:
     def _check_blocklist(self, text: str) -> float | None:
         for pattern in self._blocklist_critical:
             if pattern.search(text):
-                return 0.01
+                return 0.0  # Critical: never show ads
         for pattern in self._blocklist_severe:
             if pattern.search(text):
-                return 0.05
+                return 0.0  # Severe: never show ads
         return None
 
     def _count_commercial_signals(self, text: str) -> int:
@@ -122,8 +138,8 @@ class EligibilityClassifier:
         informational_count = self._count_informational_signals(query)
         sensitive_count = self._count_sensitive_signals(query)
 
-        commercial_boost = min(commercial_count * 0.12, 0.45)
-        informational_boost = min(informational_count * 0.08, 0.2)
+        commercial_boost = min(commercial_count * 0.15, 0.50)
+        informational_boost = min(informational_count * 0.10, 0.25)
         sensitive_penalty = min(sensitive_count * 0.15, 0.35)
 
         if self.mode == "distilbert":

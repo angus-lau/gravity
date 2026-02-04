@@ -1,7 +1,7 @@
 # Gravity Take Home
 
 
-Created an ad retrieval system that takes in a user query and matches it to relevant advertising campaigns via vector similarity and context aware ranking.
+An ad retrieval system that takes in a user query and matches it to relevant advertising campaigns via vector similarity and context aware ranking.
 
 ## Features
 
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 There are two ways to generate synthetic campaign data:
 
-**Option 1: Template randomizer**
+**(SELECTED) Option 1: Template randomizer**
 ```bash
 python scripts/generate_test_data.py
 ```
@@ -52,7 +52,7 @@ export OPENROUTER_API_KEY=your_key_here
 python scripts/generate_campaigns.py
 ```
 
-Selected Claude Haiku via OpenRouter since it's a lightweight model, and can generate more diverse, authentic campaign data. Requires API key.
+Used Claude Haiku via OpenRouter since it's a lightweight model, and can generate more diverse, authentic campaign data. Requires API key.
 
 Then build the FAISS index:
 ```bash
@@ -159,6 +159,30 @@ pytest tests/test_eligibility.py -v
 pytest tests/ --cov=app --cov-report=term-missing
 ```
 
+## Example Queries
+
+| Query | Eligibility | Category |
+|-------|-------------|----------|
+| Best running shoes for flat feet | 0.95 | High - Commercial |
+| Buy iPhone 15 Pro Max deals | 0.95 | High - Commercial |
+| Cheap flights to Hawaii | 0.95 | High - Commercial |
+| Top rated noise cancelling headphones | 0.80 | High - Commercial |
+| Where to buy organic coffee beans | 1.00 | High - Commercial |
+| Why do runners get blisters? | 0.85 | Medium - Informational |
+| What is the history of the marathon? | 0.70 | Medium - Informational |
+| How to train for a 5K | 0.60 | Medium - Informational |
+| How to kill weeds in my garden | 0.60 | Medium - Informational |
+| I'm feeling stressed about work | 0.35 | Low - Sensitive |
+| How do I file for unemployment | 0.45 | Low - Sensitive |
+| Dealing with anxiety and depression | 0.50 | Low - Sensitive |
+| Going through a divorce | 0.35 | Low - Sensitive |
+| My mom just passed away | 0.00 | Blocked - Tragedy |
+| I'm having thoughts of self-harm | 0.00 | Blocked - Self-harm |
+| How to make a pipe bomb | 0.00 | Blocked - Violence |
+| Where to watch porn | 0.00 | Blocked - NSFW |
+| I hate all immigrants | 0.00 | Blocked - Hate speech |
+| Terrorist attack planning | 0.00 | Blocked - Violence |
+
 ## Configuration
 
 | Environment Variable | Options | Default | Description |
@@ -206,11 +230,16 @@ gravity/
 ## Scalability Considerations
 
 **10x campaigns (100K)**:
-- Switch from `IndexFlatIP` to `IndexIVFFlat` or `IndexHNSW` for sub-linear search
+- Switch from `IndexFlatIP` O(n) to `HNSW` O(log n) where latency is ~5ms but recall drops ~95-99%.
+- Add managed vector DB e.g Pinecone
+- Shard index by category/region
+- Redis shared state for caching
+- Move data from JSON to database (Postgres)
 
 **100x QPS**:
 - Horizontal scaling via container replicas (stateless design)
-- Redis for shared query/embedding cache across instances
+
+
 
 ## Benchmarks
 
