@@ -188,7 +188,7 @@ pytest tests/ --cov=app --cov-report=term-missing
 | Environment Variable | Options | Default | Description |
 |---------------------|---------|---------|-------------|
 | `EMBEDDING_BACKEND` | `onnx`, `pytorch` | `onnx` | Embedding model backend |
-| `ELIGIBILITY_MODE` | `rule-based`, `distilbert` | `rule-based` | Eligibility classifier mode |
+| `ELIGIBILITY_MODE` | `rule-based`, `distilbert` | `rule-based and distilbert` | Eligibility classifier mode |
 
 ## Project Structure
 
