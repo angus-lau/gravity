@@ -69,10 +69,16 @@ Server starts at `http://localhost:8000`
 
 ## API Usage
 
+**Live Demo:** https://gravity-production-9f70.up.railway.app
+
 ### Health Check
 
 ```bash
+# Local
 curl http://localhost:8000/health
+
+# Railway (live)
+curl https://gravity-production-9f70.up.railway.app/health
 ```
 
 ```json
@@ -86,6 +92,7 @@ curl http://localhost:8000/health
 ### Retrieve Campaigns
 
 ```bash
+# Local
 curl -X POST http://localhost:8000/api/retrieve \
   -H "Content-Type: application/json" \
   -d '{
@@ -97,6 +104,11 @@ curl -X POST http://localhost:8000/api/retrieve \
       "interests": ["running", "fitness"]
     }
   }'
+
+# Railway (live)
+curl -X POST https://gravity-production-9f70.up.railway.app/api/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"query": "best running shoes", "context": {"age": 28}}'
 ```
 
 ### Response Schema
