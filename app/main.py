@@ -97,7 +97,7 @@ async def retrieve(request: RetrievalRequest):
             timing=TimingMetadata(**{k: round(v, 2) for k, v in timing.items()}),
             model_versions={
                 "embedding": "all-MiniLM-L6-v2",
-                "eligibility": "distilbert-base-uncased-finetuned-sst-2-english",
+                "eligibility": get_eligibility_classifier().mode,
             },
             query_embedding_dim=384,
             candidates_before_rerank=len(candidates),
