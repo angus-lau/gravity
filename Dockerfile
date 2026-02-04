@@ -9,9 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download models during build (cached in image, not downloaded at runtime)
+# Pre-download ALL models during build (cached in image, not downloaded at runtime)
 RUN python -c "from sentence_transformers import SentenceTransformer; \
-    SentenceTransformer('all-MiniLM-L6-v2', backend='onnx', model_kwargs={'file_name': 'onnx/model_O4.onnx'})"
+    SentenceTransformer('all-MiniLM-L6-v2', backend='onnx', model_kwargs={'file_name': 'onnx/model_O4.onnx'}); \
+    from transformers import AutoTokenizer; \
+    from optimum.onnxruntime import ORTModelForSequenceClassification; \
+    AutoTokenizer.from_pretrained('martin-ha/toxic-comment-model'); \
+    ORTModelForSequenceClassification.from_pretrained('martin-ha/toxic-comment-model', export=True, provider='CPUExecutionProvider'); \
+    AutoTokenizer.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english'); \
+    ORTModelForSequenceClassification.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english', export=True, provider='CPUExecutionProvider')"
 
 COPY app/ app/
 COPY data/ data/

@@ -24,10 +24,22 @@ _executor = ThreadPoolExecutor(max_workers=4)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Models are pre-downloaded in Docker image, this just loads them into memory
-    get_embedding_model()
-    get_eligibility_classifier()
-    get_category_matcher()
+    embedding_model = get_embedding_model()
+    eligibility_classifier = get_eligibility_classifier()
+    category_matcher = get_category_matcher()
     get_campaign_index()
+
+    # Warmup: run dummy inference to JIT-compile and warm caches
+    # This ensures the first real request doesn't pay cold-start penalty
+    warmup_query = "best running shoes for marathon training"
+    _ = eligibility_classifier.score(warmup_query)
+    warmup_emb = embedding_model.encode(warmup_query)
+    _ = category_matcher.match(warmup_emb, top_k=5)
+
+    # Warmup FAISS search
+    index = get_campaign_index()
+    _ = index.search(warmup_emb, top_k=100)
+
     yield
 
 

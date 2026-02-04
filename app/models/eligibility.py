@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
 import numpy as np
@@ -258,9 +259,12 @@ class EligibilityClassifier:
         danger_sim, safe_sim = self._get_danger_score(query)
         danger_diff = danger_sim - safe_sim
 
-        # Get toxicity and sentiment scores
-        toxicity = self._get_toxicity_score(query)
-        sentiment = self._get_sentiment_score(query)
+        # Get toxicity and sentiment scores in parallel for latency optimization
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            toxicity_future = executor.submit(self._get_toxicity_score, query)
+            sentiment_future = executor.submit(self._get_sentiment_score, query)
+            toxicity = toxicity_future.result()
+            sentiment = sentiment_future.result()
 
         # Block ads for clearly dangerous or toxic content
         if danger_diff > self.DANGER_BLOCK_THRESHOLD:
