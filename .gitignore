@@ -36,10 +36,7 @@ htmlcov/
 .env.local
 *.env
 
-# Data files (generated, not committed)
-data/campaigns.json
-data/campaigns.index
-data/campaign_embeddings.npy
+# Data files (large generated files)
 data/*.pkl
 
 # Model files (downloaded at runtime) - at root level only
