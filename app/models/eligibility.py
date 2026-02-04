@@ -39,6 +39,18 @@ INFORMATIONAL_SIGNALS = [
     r"\b(runners?|athletes?|performance|training)\b",
 ]
 
+# Sensitive topics - not blocked, but lower ad eligibility
+SENSITIVE_SIGNALS = [
+    r"\b(unemployment|laid off|fired|job loss|lost my job)\b",
+    r"\b(stressed|anxious|depressed|overwhelmed|struggling)\b",
+    r"\b(divorce|separation|breakup|broke up)\b",
+    r"\b(debt|bankruptcy|foreclosure|eviction)\b",
+    r"\b(illness|sick|diagnosed|hospital|surgery)\b",
+    r"\b(grieving|mourning|loss of)\b",
+    r"\b(addiction|rehab|recovery|sober)\b",
+    r"\b(abuse|assault|victim|trauma)\b",
+]
+
 
 class EligibilityClassifier:
     _instance: "EligibilityClassifier | None" = None
@@ -51,6 +63,7 @@ class EligibilityClassifier:
         self._blocklist_severe = [re.compile(p, re.IGNORECASE) for p in BLOCKLIST_SEVERE]
         self._commercial_re = [re.compile(p, re.IGNORECASE) for p in COMMERCIAL_SIGNALS]
         self._informational_re = [re.compile(p, re.IGNORECASE) for p in INFORMATIONAL_SIGNALS]
+        self._sensitive_re = [re.compile(p, re.IGNORECASE) for p in SENSITIVE_SIGNALS]
 
         if mode == "distilbert":
             self._tokenizer = AutoTokenizer.from_pretrained(DISTILBERT_MODEL)
@@ -82,6 +95,9 @@ class EligibilityClassifier:
     def _count_informational_signals(self, text: str) -> int:
         return sum(1 for p in self._informational_re if p.search(text))
 
+    def _count_sensitive_signals(self, text: str) -> int:
+        return sum(1 for p in self._sensitive_re if p.search(text))
+
     def _get_sentiment_score(self, query: str) -> float:
         inputs = self._tokenizer(
             query[:512], return_tensors="pt", truncation=True, max_length=512
@@ -104,14 +120,17 @@ class EligibilityClassifier:
 
         commercial_count = self._count_commercial_signals(query)
         informational_count = self._count_informational_signals(query)
+        sensitive_count = self._count_sensitive_signals(query)
+
         commercial_boost = min(commercial_count * 0.12, 0.45)
         informational_boost = min(informational_count * 0.08, 0.2)
+        sensitive_penalty = min(sensitive_count * 0.15, 0.35)
 
         if self.mode == "distilbert":
             sentiment_score = self._get_sentiment_score(query)
-            base_score = 0.5 + (sentiment_score - 0.5) * 0.2 + commercial_boost + informational_boost
+            base_score = 0.5 + (sentiment_score - 0.5) * 0.2 + commercial_boost + informational_boost - sensitive_penalty
         else:
-            base_score = 0.5 + commercial_boost + informational_boost
+            base_score = 0.5 + commercial_boost + informational_boost - sensitive_penalty
 
         score = max(0.0, min(1.0, base_score))
 
