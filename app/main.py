@@ -23,6 +23,7 @@ _executor = ThreadPoolExecutor(max_workers=4)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Models are pre-downloaded in Docker image, this just loads them into memory
     get_embedding_model()
     get_eligibility_classifier()
     get_category_matcher()
