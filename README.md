@@ -44,7 +44,7 @@ There are two ways to generate synthetic campaign data:
 ```bash
 python scripts/generate_test_data.py
 ```
-predefined templates with randomized advertisers, titles, and targeting.
+predefined templates with randomized advertisers, titles, and targeting. Also scrambled search index to prevent bias.
 
 **Option 2: LLM-generated**
 ```bash
@@ -247,7 +247,7 @@ Run latency benchmarks:
 
 ```bash
 # API latency benchmark (100 requests, 10 concurrent)
-python scripts/benchmark.py -n 100 -c 10
+python scripts/benchmark.py -n 100
 
 # Model-specific benchmarks
 python scripts/benchmark_embeddings.py  # PyTorch vs ONNX
