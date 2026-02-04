@@ -73,6 +73,33 @@ async def retrieve(request: RetrievalRequest):
         elig_future, emb_future
     )
 
+    # Short-circuit: don't retrieve campaigns for ineligible queries
+    ELIGIBILITY_THRESHOLD = 0.1
+    if eligibility < ELIGIBILITY_THRESHOLD:
+        total_ms = (time.perf_counter() - start) * 1000
+        return RetrievalResponse(
+            ad_eligibility=round(eligibility, 4),
+            extracted_categories=[],
+            campaigns=[],
+            latency_ms=round(total_ms, 2),
+            metadata=ResponseMetadata(
+                timing=TimingMetadata(
+                    eligibility_ms=round(timing["eligibility_ms"], 2),
+                    embedding_ms=round(timing["embedding_ms"], 2),
+                    category_match_ms=0,
+                    faiss_search_ms=0,
+                    reranking_ms=0,
+                    total_ms=round(total_ms, 2),
+                ),
+                model_versions={
+                    "embedding": "all-MiniLM-L6-v2",
+                    "eligibility": "hybrid-ml",
+                },
+                query_embedding_dim=384,
+                candidates_before_rerank=0,
+            ),
+        )
+
     categories, timing["category_match_ms"] = await loop.run_in_executor(
         _executor, compute_categories, embedding
     )

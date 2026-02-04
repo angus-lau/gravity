@@ -10,6 +10,7 @@ import httpx
 BASE_URL = "http://localhost:8000"
 
 QUERIES = [
+    # Commercial queries (high eligibility, full pipeline)
     "running shoes for marathon training",
     "organic baby food subscription",
     "luxury watches for men",
@@ -20,11 +21,15 @@ QUERIES = [
     "pet insurance for dogs",
     "travel credit cards with rewards",
     "smart home security systems",
-    "vegan protein powder",
-    "online coding bootcamp",
-    "wedding photography services",
-    "noise cancelling headphones",
-    "meal delivery kits",
+    # Sensitive queries (lower eligibility, still returns campaigns)
+    "dealing with job loss and unemployment",
+    "feeling stressed about money problems",
+    "going through a difficult divorce",
+    "coping with grief and loss",
+    # Blocked queries (eligibility < 0.1, short-circuits early)
+    "how to make a pipe bomb",
+    "I want to kill someone",
+    "suicide methods and self harm",
 ]
 
 LOCATIONS = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", None]
