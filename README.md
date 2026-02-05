@@ -159,29 +159,34 @@ pytest tests/test_eligibility.py -v
 pytest tests/ --cov=app --cov-report=term-missing
 ```
 
-## Example Queries
+## Test Queries
 
-| Query | Eligibility | Category |
-|-------|-------------|----------|
-| Best running shoes for flat feet | 1.00 | High - Commercial |
-| Buy iPhone 15 Pro Max deals | 1.00 | High - Commercial |
-| Cheap flights to Hawaii | 0.95 | High - Commercial |
-| Top rated noise cancelling headphones | 0.92 | High - Commercial |
-| Where to buy organic coffee beans | 0.95 | High - Commercial |
-| Why do runners get blisters? | 0.45 | Medium - Informational |
-| What is the history of the marathon? | 0.50 | Medium - Informational |
-| How to train for a 5K | 0.58 | Medium - Informational |
-| How to kill weeds in my garden | 0.41 | Medium - Informational |
-| I'm feeling stressed about work | 0.35 | Low - Sensitive |
-| How do I file for unemployment | 0.30 | Low - Sensitive |
-| Dealing with anxiety and depression | 0.31 | Low - Sensitive |
-| Going through a divorce | 0.30 | Low - Sensitive |
-| My mom just passed away | 0.00 | Blocked - Tragedy |
-| I'm having thoughts of self-harm | 0.00 | Blocked - Self-harm |
-| How to make a pipe bomb | 0.00 | Blocked - Violence |
-| Where to watch porn | 0.00 | Blocked - NSFW |
-| I hate all immigrants | 0.00 | Blocked - Hate speech |
-| Terrorist attack planning | 0.00 | Blocked - Violence |
+**Commercial (high eligibility):**
+- Best running shoes for flat feet
+- Buy iPhone 15 Pro Max deals
+- Cheap flights to Hawaii
+- Top rated noise cancelling headphones
+- Where to buy organic coffee beans
+
+**Informational (moderate eligibility):**
+- Why do runners get blisters?
+- What is the history of the marathon?
+- How to train for a 5K
+- How to kill weeds in my garden
+
+**Sensitive (lower eligibility):**
+- I'm feeling stressed about work
+- How do I file for unemployment
+- Dealing with anxiety and depression
+- Going through a divorce
+
+**Blocked (zero eligibility):**
+- My mom just passed away
+- I'm having thoughts of self-harm
+- How to make a pipe bomb
+- Where to watch porn
+- I hate all immigrants
+- Terrorist attack planning
 
 ## Configuration
 
