@@ -263,5 +263,3 @@ python scripts/benchmark_eligibility.py # Rule-based vs DistilBERT
 | FAISS search | ~1-2ms | ~5-10ms |
 | Reranking | ~2-3ms | ~10-20ms |
 | **Total** | **~15-25ms** | **~80-150ms** |
-
-**Note:** Railway uses shared vCPUs which are ~5-10x slower than dedicated hardware. The same code achieves <100ms P95 locally but ~100-150ms on Railway's shared infrastructure. For production, dedicated CPU or GPU instances are recommended.
