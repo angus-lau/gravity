@@ -127,11 +127,18 @@ class EligibilityClassifier:
         ]
 
         # Load toxicity model (for hate speech, threats)
+        # Limit threads per model to avoid contention when running in parallel
+        from onnxruntime import SessionOptions
+        session_options = SessionOptions()
+        session_options.intra_op_num_threads = 4  # 4 threads per model, 3 models = 12 total
+        session_options.inter_op_num_threads = 1
+
         self._toxicity_tokenizer = AutoTokenizer.from_pretrained(TOXICITY_MODEL)
         self._toxicity_model = ORTModelForSequenceClassification.from_pretrained(
             TOXICITY_MODEL,
             export=True,
             provider="CPUExecutionProvider",
+            session_options=session_options,
         )
 
         # Load sentiment model (for commercial intent)
@@ -140,6 +147,7 @@ class EligibilityClassifier:
             SENTIMENT_MODEL,
             export=True,
             provider="CPUExecutionProvider",
+            session_options=session_options,
         )
         self._sentiment_id2label = self._sentiment_model.config.id2label
 
