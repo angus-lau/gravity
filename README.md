@@ -3,6 +3,8 @@
 
 An ad retrieval system that takes in a user query and matches it to relevant advertising campaigns via vector similarity and context aware ranking.
 
+> **Note:** The Railway demo uses shared vCPUs which are ~5-10x slower than dedicated hardware. Locally, it runs <25ms P95 but on Railway it varies from ~100-150ms.
+
 ## Features
 
 - **Semantic Search**: Use sentence embeddings to match relevant campaigns to query. (all-MiniLM-L6-v2)
@@ -259,9 +261,14 @@ python scripts/benchmark_embeddings.py  # PyTorch vs ONNX
 python scripts/benchmark_eligibility.py # Rule-based vs DistilBERT
 ```
 
-Typical latency breakdown (local, M1 Mac):
-- Embedding: ~8ms (ONNX)
-- Eligibility: <1ms (rule-based)
-- FAISS search: ~15ms
-- Reranking: ~10ms
-- **Total: ~35-50ms**
+### Latency by Environment
+
+| Component | Local (M1 Mac) | Railway (shared vCPU) |
+|-----------|----------------|----------------------|
+| Eligibility | ~10-15ms | ~50-130ms |
+| Embedding | ~3-5ms | ~8-15ms |
+| FAISS search | ~1-2ms | ~5-10ms |
+| Reranking | ~2-3ms | ~10-20ms |
+| **Total** | **~15-25ms** | **~80-150ms** |
+
+**Note:** Railway uses shared vCPUs which are ~5-10x slower than dedicated hardware. The same code achieves <100ms P95 locally but ~100-150ms on Railway's shared infrastructure. For production, dedicated CPU or GPU instances are recommended.
