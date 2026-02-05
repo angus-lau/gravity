@@ -33,8 +33,9 @@ def rerank(
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
+    # Use model_construct to skip Pydantic validation for performance
     return [
-        Campaign(
+        Campaign.model_construct(
             campaign_id=c["campaign_id"],
             relevance_score=round(score, 4),
             advertiser=c.get("advertiser"),

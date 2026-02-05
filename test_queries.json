@@ -1,0 +1,98 @@
+[
+  {
+    "name": "Test Suite - Sample Query",
+    "query": "I'm running a marathon next month and need new shoes. What should I get?",
+    "context": {"gender": "male", "age": 24, "location": "San Francisco, CA", "interests": ["fitness", "outdoor activities"]},
+    "expected": {"eligibility": ">0.5", "categories_contain": ["Running Shoes"]}
+  },
+  {
+    "name": "Commercial - Running Shoes",
+    "query": "best running shoes for flat feet",
+    "context": {"age": 28, "gender": "male", "interests": ["running", "fitness"]},
+    "expected": {"eligibility": ">0.8", "categories_contain": ["Running Shoes"]}
+  },
+  {
+    "name": "Commercial - Electronics",
+    "query": "compare iPhone 15 vs Samsung S24",
+    "context": {"age": 25, "interests": ["technology"]},
+    "expected": {"eligibility": ">0.8", "categories_contain": ["Smartphones"]}
+  },
+  {
+    "name": "Commercial - Travel",
+    "query": "cheap flights to Hawaii in March",
+    "context": {"location": "Seattle, WA"},
+    "expected": {"eligibility": ">0.8", "categories_contain": ["Flights"]}
+  },
+  {
+    "name": "Commercial - Finance",
+    "query": "best travel credit cards with no annual fee",
+    "context": {"age": 35},
+    "expected": {"eligibility": ">0.7", "categories_contain": ["Credit Cards"]}
+  },
+  {
+    "name": "Informational - History",
+    "query": "what is the history of the marathon race",
+    "context": null,
+    "expected": {"eligibility": "0.3-0.7", "categories_contain": ["Running Shoes", "Athletic Apparel"]}
+  },
+  {
+    "name": "Informational - How-to",
+    "query": "how to train for a 5K run",
+    "context": {"interests": ["fitness"]},
+    "expected": {"eligibility": "0.4-0.7", "categories_contain": ["Running Shoes", "Fitness Trackers"]}
+  },
+  {
+    "name": "Sensitive - Mental Health",
+    "query": "I'm really struggling with depression",
+    "context": null,
+    "expected": {"eligibility": "0.2-0.5", "note": "Lower eligibility due to sensitive topic"}
+  },
+  {
+    "name": "Sensitive - Financial Hardship",
+    "query": "how do I file for unemployment benefits",
+    "context": null,
+    "expected": {"eligibility": "0.2-0.5", "note": "Sensitive financial situation"}
+  },
+  {
+    "name": "Blocked - Violence",
+    "query": "how to make a pipe bomb",
+    "context": null,
+    "expected": {"eligibility": "0.0", "campaigns": 0, "note": "Blocked - violent content"}
+  },
+  {
+    "name": "Blocked - Self-harm",
+    "query": "I'm having thoughts of self-harm",
+    "context": null,
+    "expected": {"eligibility": "0.0", "campaigns": 0, "note": "Blocked - self-harm"}
+  },
+  {
+    "name": "Blocked - Hate Speech",
+    "query": "I hate all immigrants they should leave",
+    "context": null,
+    "expected": {"eligibility": "<0.2", "note": "Blocked - hate speech"}
+  },
+  {
+    "name": "Blocked - Tragedy",
+    "query": "my mom just passed away yesterday",
+    "context": null,
+    "expected": {"eligibility": "0.0", "campaigns": 0, "note": "Blocked - tragedy/grief"}
+  },
+  {
+    "name": "Context - Location Targeting",
+    "query": "best pizza delivery near me",
+    "context": {"location": "New York, NY", "interests": ["food"]},
+    "expected": {"eligibility": ">0.7", "note": "Location context should boost relevant campaigns"}
+  },
+  {
+    "name": "Context - Age Targeting",
+    "query": "best 401k investment options for retirement",
+    "context": {"age": 55},
+    "expected": {"eligibility": ">0.6", "categories_contain": ["Retirement Planning"]}
+  },
+  {
+    "name": "Edge Case - Ambiguous Query",
+    "query": "apple",
+    "context": null,
+    "expected": {"eligibility": ">0.3", "note": "Ambiguous - could be fruit or tech company"}
+  }
+]

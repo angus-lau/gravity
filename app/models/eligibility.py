@@ -255,16 +255,17 @@ class EligibilityClassifier:
                 self._cache[normalized] = score
             return score
 
-        # Get danger score via embedding similarity
-        danger_sim, safe_sim = self._get_danger_score(query)
-        danger_diff = danger_sim - safe_sim
-
-        # Get toxicity and sentiment scores in parallel for latency optimization
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        # Run all ML models in parallel for latency optimization
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            danger_future = executor.submit(self._get_danger_score, query)
             toxicity_future = executor.submit(self._get_toxicity_score, query)
             sentiment_future = executor.submit(self._get_sentiment_score, query)
+
+            danger_sim, safe_sim = danger_future.result()
             toxicity = toxicity_future.result()
             sentiment = sentiment_future.result()
+
+        danger_diff = danger_sim - safe_sim
 
         # Block ads for clearly dangerous or toxic content
         if danger_diff > self.DANGER_BLOCK_THRESHOLD:

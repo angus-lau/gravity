@@ -36,9 +36,12 @@ async def lifespan(app: FastAPI):
     warmup_emb = embedding_model.encode(warmup_query)
     _ = category_matcher.match(warmup_emb, top_k=5)
 
-    # Warmup FAISS search
+    # Warmup FAISS search and reranker
     index = get_campaign_index()
-    _ = index.search(warmup_emb, top_k=100)
+    warmup_candidates = index.search(warmup_emb, top_k=1000)
+    from app.schemas import UserContext
+    warmup_context = UserContext(gender="male", age=30, location="New York", interests=["fitness"])
+    _ = rerank(warmup_candidates, warmup_context, top_k=1000)
 
     yield
 
