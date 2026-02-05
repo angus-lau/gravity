@@ -16,13 +16,6 @@ An ad retrieval system that takes in a user query and matches it to relevant adv
 ### Architecture
 ![alt text](<Context Diagram (Current)-2.svg>)
 
-## Quick Start
-
-### Prerequisites
-
-- Python 3.11+
-- ~2GB RAM for model loading
-
 ### Installation
 
 ```bash
