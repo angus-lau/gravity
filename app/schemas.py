@@ -71,9 +71,8 @@ class RetrievalResponse(BaseModel):
     @field_validator("campaigns")
     @classmethod
     def campaigns_sorted_descending(cls, v: list[Campaign]) -> list[Campaign]:
-        if len(v) > 1:
-            scores = [c.relevance_score for c in v]
-            if scores != sorted(scores, reverse=True):
+        for i in range(len(v) - 1):
+            if v[i].relevance_score < v[i + 1].relevance_score:
                 raise ValueError("Campaigns must be sorted by relevance_score in descending order")
         return v
 

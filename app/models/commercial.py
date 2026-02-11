@@ -32,6 +32,7 @@ class CommercialIntentClassifier:
 
     _instance: "CommercialIntentClassifier | None" = None
     _cache: OrderedDict[str, float] = OrderedDict()
+    _sentiment_cache: dict[str, float] = {}
     _cache_max_size: int = 10000
 
     COMMERCIAL_BOOST = 0.45
@@ -60,21 +61,22 @@ class CommercialIntentClassifier:
             cls._instance = cls()
         return cls._instance
 
-    def _has_commercial_intent(self, query: str) -> bool:
-        q_lower = query.lower()
+    def _has_commercial_intent(self, q_lower: str) -> bool:
         for signal in COMMERCIAL_SIGNALS:
             if signal in q_lower:
                 return True
         return False
 
-    def _is_sensitive(self, query: str) -> bool:
-        q_lower = query.lower()
+    def _is_sensitive(self, q_lower: str) -> bool:
         for term in SENSITIVE_TERMS:
             if term in q_lower:
                 return True
         return False
 
     def _get_sentiment_score(self, query: str) -> float:
+        cache_key = query.lower().strip()
+        if cache_key in self._sentiment_cache:
+            return self._sentiment_cache[cache_key]
         inputs = self._sentiment_tokenizer(
             query[:512], return_tensors="pt", truncation=True, max_length=512
         )
@@ -83,24 +85,27 @@ class CommercialIntentClassifier:
         pred_idx = probs.argmax(dim=-1).item()
         label = self._sentiment_id2label[pred_idx]
         score = probs[0][pred_idx].item()
-        return score if label == "POSITIVE" else 1 - score
+        result = score if label == "POSITIVE" else 1 - score
+        if len(self._sentiment_cache) < self._cache_max_size:
+            self._sentiment_cache[cache_key] = result
+        return result
 
     def score(self, query: str, safety: SafetyResult) -> float:
         """
         Compute final eligibility score from commercial signals + safety result.
         Starts from safety.base_score, applies commercial/sensitive/sentiment adjustments.
         """
-        cache_key = f"{query.lower().strip()}:{safety.base_score:.6f}"
+        q_lower = query.lower().strip()
+        cache_key = f"{q_lower}:{safety.base_score:.6f}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         base_score = safety.base_score
 
-        is_commercial = self._has_commercial_intent(query)
-        if is_commercial:
+        if self._has_commercial_intent(q_lower):
             base_score += self.COMMERCIAL_BOOST
 
-        is_sensitive = self._is_sensitive(query)
+        is_sensitive = self._is_sensitive(q_lower)
         if is_sensitive:
             base_score -= self.SENSITIVE_PENALTY
 
@@ -123,16 +128,17 @@ class CommercialIntentClassifier:
         self, query: str, safety: SafetyResult, sentiment: float
     ) -> float:
         """Score using a pre-computed sentiment value (avoids redundant ONNX call)."""
-        cache_key = f"{query.lower().strip()}:{safety.base_score:.6f}"
+        q_lower = query.lower().strip()
+        cache_key = f"{q_lower}:{safety.base_score:.6f}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         base_score = safety.base_score
 
-        if self._has_commercial_intent(query):
+        if self._has_commercial_intent(q_lower):
             base_score += self.COMMERCIAL_BOOST
 
-        is_sensitive = self._is_sensitive(query)
+        is_sensitive = self._is_sensitive(q_lower)
         if is_sensitive:
             base_score -= self.SENSITIVE_PENALTY
 

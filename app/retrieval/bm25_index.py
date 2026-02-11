@@ -88,10 +88,13 @@ class BM25Index:
         top_indices = top_k_unsorted[np.argsort(-scores[top_k_unsorted])]
 
         results = []
-        for idx in top_indices:
-            score = float(scores[idx])
+        top_scores = scores[top_indices].tolist()
+        top_indices_list = top_indices.tolist()
+        campaign_ids = self.campaign_ids
+        for i in range(len(top_indices_list)):
+            score = top_scores[i]
             if score > 0:
-                results.append((self.campaign_ids[idx], score))
+                results.append((campaign_ids[top_indices_list[i]], score))
 
         self._cache[cache_key] = results
         if len(self._cache) > self._cache_max_size:

@@ -22,6 +22,10 @@ from app.schemas import (
 )
 
 _executor = ThreadPoolExecutor(max_workers=5)
+_MODEL_VERSIONS = {
+    "embedding": "all-MiniLM-L6-v2",
+    "eligibility": "modular-tiered",
+}
 
 
 @asynccontextmanager
@@ -101,10 +105,7 @@ async def retrieve(request: RetrievalRequest):
                     total_ms=round(total_ms, 2),
                     blocklist_ms=round(timing["blocklist_ms"], 2),
                 ),
-                model_versions={
-                    "embedding": "all-MiniLM-L6-v2",
-                    "eligibility": "modular-tiered",
-                },
+                model_versions=_MODEL_VERSIONS,
                 query_embedding_dim=384,
                 candidates_before_rerank=0,
             ),
@@ -181,10 +182,7 @@ async def retrieve(request: RetrievalRequest):
                     blocklist_ms=round(timing.get("blocklist_ms", 0), 2),
                     safety_ms=round(timing["safety_ms"], 2),
                 ),
-                model_versions={
-                    "embedding": "all-MiniLM-L6-v2",
-                    "eligibility": "modular-tiered",
-                },
+                model_versions=_MODEL_VERSIONS,
                 query_embedding_dim=384,
                 candidates_before_rerank=0,
             ),
@@ -221,10 +219,7 @@ async def retrieve(request: RetrievalRequest):
                     commercial_ms=round(timing.get("commercial_ms", 0), 2),
                     bm25_search_ms=round(timing.get("bm25_search_ms", 0), 2),
                 ),
-                model_versions={
-                    "embedding": "all-MiniLM-L6-v2",
-                    "eligibility": "modular-tiered",
-                },
+                model_versions=_MODEL_VERSIONS,
                 query_embedding_dim=384,
                 candidates_before_rerank=0,
             ),

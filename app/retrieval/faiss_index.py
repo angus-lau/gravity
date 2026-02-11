@@ -62,10 +62,16 @@ class CampaignIndex:
         k = min(top_k, self.index.ntotal)
         scores, indices = self.index.search(query_embedding, k)
 
+        scores_list = scores[0].tolist()
+        indices_list = indices[0].tolist()
+        campaign_ids = self.campaign_ids
+        n_campaigns = len(campaign_ids)
+
         results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if 0 <= idx < len(self.campaign_ids):
-                results.append((self.campaign_ids[idx], float(score)))
+        for i in range(len(indices_list)):
+            idx = indices_list[i]
+            if 0 <= idx < n_campaigns:
+                results.append((campaign_ids[idx], scores_list[i]))
 
         return results
 
