@@ -117,50 +117,76 @@ async def retrieve(request: RetrievalRequest):
     raw_embedding = get_embedding_model().encode(request.query).flatten()
     timing["raw_embedding_ms"] = (time.perf_counter() - t0_raw) * 1000
 
-    # Run safety + commercial sentiment + embedding + BM25 all in parallel
-    # Commercial sentiment is the slow part (~40ms ONNX) — start it eagerly
-    # and combine with safety result after both finish
-    def compute_safety():
-        t0 = time.perf_counter()
-        result = get_safety_classifier().classify(request.query, query_embedding=raw_embedding)
-        return result, (time.perf_counter() - t0) * 1000
+    # Fast path: if safety + commercial + embedding are all cached, skip thread pool
+    query_normalized = request.query.lower().strip()
+    safety_classifier = get_safety_classifier()
+    cached_safety = safety_classifier._cache.get(query_normalized)
+    embedding_model = get_embedding_model()
 
-    def compute_commercial_sentiment():
-        """Pre-compute the expensive sentiment ONNX call in parallel with safety."""
+    if cached_safety is not None:
+        # All caches likely warm — run synchronously to avoid thread pool overhead
         t0 = time.perf_counter()
-        classifier = get_commercial_classifier()
-        sentiment = classifier._get_sentiment_score(request.query)
-        return sentiment, (time.perf_counter() - t0) * 1000
+        safety_result = cached_safety
+        timing["safety_ms"] = 0.0
 
-    def compute_embedding():
+        commercial_classifier = get_commercial_classifier()
+        precomputed_sentiment = commercial_classifier._get_sentiment_score(request.query)
+        timing["commercial_ms"] = (time.perf_counter() - t0) * 1000
+
         t0 = time.perf_counter()
         ctx = request.context.model_dump() if request.context else None
-        emb = get_embedding_model().encode_query(request.query, ctx)
-        return emb, (time.perf_counter() - t0) * 1000
+        embedding = embedding_model.encode_query(request.query, ctx)
+        timing["embedding_ms"] = (time.perf_counter() - t0) * 1000
 
-    def compute_bm25():
         t0 = time.perf_counter()
         try:
             from app.retrieval.bm25_index import get_bm25_index
             bm25 = get_bm25_index()
-            if bm25.is_loaded:
-                results = bm25.search(request.query, top_k=2000)
-                return results, (time.perf_counter() - t0) * 1000
+            bm25_candidates = bm25.search(request.query, top_k=2000) if bm25.is_loaded else []
         except ImportError:
-            pass
-        return [], (time.perf_counter() - t0) * 1000
+            bm25_candidates = []
+        timing["bm25_search_ms"] = (time.perf_counter() - t0) * 1000
+    else:
+        # Cold path: run everything in parallel via thread pool
+        def compute_safety():
+            t0 = time.perf_counter()
+            result = safety_classifier.classify(request.query, query_embedding=raw_embedding)
+            return result, (time.perf_counter() - t0) * 1000
 
-    safety_future = loop.run_in_executor(_executor, compute_safety)
-    sentiment_future = loop.run_in_executor(_executor, compute_commercial_sentiment)
-    emb_future = loop.run_in_executor(_executor, compute_embedding)
-    bm25_future = loop.run_in_executor(_executor, compute_bm25)
+        def compute_commercial_sentiment():
+            t0 = time.perf_counter()
+            sentiment = get_commercial_classifier()._get_sentiment_score(request.query)
+            return sentiment, (time.perf_counter() - t0) * 1000
 
-    (
-        (safety_result, timing["safety_ms"]),
-        (precomputed_sentiment, timing["commercial_ms"]),
-        (embedding, timing["embedding_ms"]),
-        (bm25_candidates, timing["bm25_search_ms"]),
-    ) = await asyncio.gather(safety_future, sentiment_future, emb_future, bm25_future)
+        def compute_embedding():
+            t0 = time.perf_counter()
+            ctx = request.context.model_dump() if request.context else None
+            emb = embedding_model.encode_query(request.query, ctx)
+            return emb, (time.perf_counter() - t0) * 1000
+
+        def compute_bm25():
+            t0 = time.perf_counter()
+            try:
+                from app.retrieval.bm25_index import get_bm25_index
+                bm25 = get_bm25_index()
+                if bm25.is_loaded:
+                    results = bm25.search(request.query, top_k=2000)
+                    return results, (time.perf_counter() - t0) * 1000
+            except ImportError:
+                pass
+            return [], (time.perf_counter() - t0) * 1000
+
+        safety_future = loop.run_in_executor(_executor, compute_safety)
+        sentiment_future = loop.run_in_executor(_executor, compute_commercial_sentiment)
+        emb_future = loop.run_in_executor(_executor, compute_embedding)
+        bm25_future = loop.run_in_executor(_executor, compute_bm25)
+
+        (
+            (safety_result, timing["safety_ms"]),
+            (precomputed_sentiment, timing["commercial_ms"]),
+            (embedding, timing["embedding_ms"]),
+            (bm25_candidates, timing["bm25_search_ms"]),
+        ) = await asyncio.gather(safety_future, sentiment_future, emb_future, bm25_future)
 
     # Early stop if unsafe
     if safety_result.is_blocked:
