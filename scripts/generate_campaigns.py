@@ -14,7 +14,7 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-MODEL_NAME = "anthropic/claude-3-haiku-20240307"
+MODEL_NAME = "openai/gpt-4o-mini"
 
 CAMPAIGNS_PER_VERTICAL = 1000
 BATCH_SIZE = 20

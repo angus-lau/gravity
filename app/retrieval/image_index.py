@@ -1,4 +1,7 @@
+"""FAISS index over CLIP text-proxy embeddings for image-based retrieval."""
+
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import faiss
@@ -7,28 +10,25 @@ import numpy as np
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 
-class CampaignIndex:
-    _instance: "CampaignIndex | None" = None
+class CaptionIndex:
+    """FAISS index over CLIP text-proxy embeddings for campaign images."""
+
+    _instance: "CaptionIndex | None" = None
 
     def __init__(self):
         self.index: faiss.IndexFlatIP | None = None
         self.campaign_ids: list[str] = []
-        self.campaigns: dict[str, dict] = {}
         self._load()
 
     @classmethod
-    def get_instance(cls) -> "CampaignIndex":
+    def get_instance(cls) -> "CaptionIndex":
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
     def _load(self):
-        index_path = DATA_DIR / "campaigns.index"
+        index_path = DATA_DIR / "caption.index"
         mapping_path = DATA_DIR / "campaign_id_mapping.json"
-        campaigns_path = DATA_DIR / "campaigns_indexed.json"
-
-        if not index_path.exists():
-            campaigns_path = DATA_DIR / "campaigns.json"
 
         if index_path.exists():
             self.index = faiss.read_index(str(index_path))
@@ -36,11 +36,6 @@ class CampaignIndex:
         if mapping_path.exists():
             with open(mapping_path) as f:
                 self.campaign_ids = json.load(f)
-
-        if campaigns_path.exists():
-            with open(campaigns_path) as f:
-                campaigns_list = json.load(f)
-                self.campaigns = {c["campaign_id"]: c for c in campaigns_list}
 
     @property
     def is_loaded(self) -> bool:
@@ -50,7 +45,7 @@ class CampaignIndex:
     def size(self) -> int:
         return self.index.ntotal if self.index else 0
 
-    def search(self, query_embedding: np.ndarray, top_k: int = 2000) -> list[tuple[str, float]]:
+    def search(self, query_embedding: np.ndarray, top_k: int = 500) -> list[tuple[str, float]]:
         if not self.is_loaded:
             return []
 
@@ -67,9 +62,7 @@ class CampaignIndex:
 
         return results
 
-    def get_campaign(self, campaign_id: str) -> dict | None:
-        return self.campaigns.get(campaign_id)
 
-
-def get_campaign_index() -> CampaignIndex:
-    return CampaignIndex.get_instance()
+@lru_cache(maxsize=1)
+def get_caption_index() -> CaptionIndex:
+    return CaptionIndex.get_instance()

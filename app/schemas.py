@@ -39,6 +39,17 @@ class TimingMetadata(BaseModel):
     faiss_search_ms: float = Field(..., ge=0)
     reranking_ms: float = Field(..., ge=0)
     total_ms: float = Field(..., ge=0)
+    # Phase 1: Modular guardrails timing breakdown
+    blocklist_ms: float = Field(default=0, ge=0)
+    safety_ms: float = Field(default=0, ge=0)
+    commercial_ms: float = Field(default=0, ge=0)
+    # Phase 2: Query expansion
+    expansion_ms: float = Field(default=0, ge=0)
+    # Phase 3: Hybrid retrieval
+    bm25_search_ms: float = Field(default=0, ge=0)
+    fusion_ms: float = Field(default=0, ge=0)
+    # Phase 4: Image search
+    image_search_ms: float = Field(default=0, ge=0)
 
 
 class ResponseMetadata(BaseModel):
@@ -71,6 +82,12 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     models_loaded: bool
     campaigns_indexed: int
+
+
+class ImageRetrievalResponse(BaseModel):
+    campaigns: list[Campaign]
+    latency_ms: float = Field(..., ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ErrorResponse(BaseModel):

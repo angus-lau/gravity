@@ -45,7 +45,9 @@ class EmbeddingModel:
         return embeddings.astype(np.float32)
 
     def encode_query(self, query: str, context: dict | None = None) -> np.ndarray:
-        parts = [query]
+        from app.models.query_expansion import get_query_expander
+        expanded = get_query_expander().expand(query)
+        parts = [expanded]
         if context:
             if context.get("interests"):
                 parts.append(" ".join(context["interests"]))

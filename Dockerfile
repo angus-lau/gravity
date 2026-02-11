@@ -19,6 +19,10 @@ RUN python -c "from sentence_transformers import SentenceTransformer; \
     AutoTokenizer.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english'); \
     ORTModelForSequenceClassification.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english', export=True, provider='CPUExecutionProvider')"
 
+# Pre-download CLIP model for image search (optional but cached)
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('clip-ViT-B-32')" || true
+
 COPY app/ app/
 COPY data/ data/
 
