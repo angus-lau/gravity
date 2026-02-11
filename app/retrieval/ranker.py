@@ -87,6 +87,11 @@ def rerank(
     if context and context.interests:
         user_interest_set = frozenset(i.lower() for i in context.interests)
 
+    # Pre-normalize user location once (avoids per-candidate normalization)
+    user_location_normalized: str | None = None
+    if context and context.location:
+        user_location_normalized = _normalize_location(context.location)
+
     scored = []
     for campaign_id, base_score in candidates:
         campaign_data = campaign_data_map.get(campaign_id)
@@ -96,10 +101,24 @@ def rerank(
         boost = 0.0
         if context:
             targeting = campaign_data.get("targeting", {})
-            boost += _location_boost(context.location, targeting.get("locations", []))
+            boost += _location_boost(
+                context.location,
+                targeting.get("locations", []),
+                user_location_normalized,
+                targeting.get("_locations_normalized"),
+            )
             boost += _age_boost(context.age, targeting.get("age_range"))
-            boost += _interest_boost(user_interest_set, targeting.get("interests", []))
-            boost += _gender_boost(context.gender, targeting.get("genders"))
+            boost += _interest_boost(
+                user_interest_set,
+                targeting.get("interests", []),
+                targeting.get("_interests_lowered"),
+            )
+            boost += _gender_boost(
+                context.gender,
+                targeting.get("genders"),
+                targeting.get("_genders_lowered"),
+                targeting.get("_genders_lowered_str"),
+            )
 
         scored.append((campaign_data, base_score + boost))
 
@@ -123,12 +142,20 @@ def rerank(
     ]
 
 
-def _location_boost(user_loc: str | None, campaign_locs: list[str]) -> float:
+def _location_boost(
+    user_loc: str | None,
+    campaign_locs: list[str],
+    user_normalized: str | None = None,
+    campaign_locs_normalized: list[str] | None = None,
+) -> float:
     if not user_loc or not campaign_locs:
         return 0.0
-    user_normalized = _normalize_location(user_loc)
-    for loc in campaign_locs:
-        campaign_normalized = _normalize_location(loc)
+    if user_normalized is None:
+        user_normalized = _normalize_location(user_loc)
+    # Use pre-normalized campaign locations if available (from index load time)
+    if campaign_locs_normalized is None:
+        campaign_locs_normalized = [_normalize_location(loc) for loc in campaign_locs]
+    for campaign_normalized in campaign_locs_normalized:
         if user_normalized == campaign_normalized:
             return LOCATION_BOOST
     # State-level matching (more precise than substring)
@@ -142,8 +169,7 @@ def _location_boost(user_loc: str | None, campaign_locs: list[str]) -> float:
         # matching, which would produce false positives (e.g. "CA" in "Chicago")
         return 0.0
     # Fallback: substring matching for partial matches
-    for loc in campaign_locs:
-        campaign_normalized = _normalize_location(loc)
+    for campaign_normalized in campaign_locs_normalized:
         if user_normalized in campaign_normalized or campaign_normalized in user_normalized:
             return LOCATION_BOOST
     return 0.0
@@ -157,22 +183,35 @@ def _age_boost(user_age: int | None, age_range: list[int] | None) -> float:
     return 0.0
 
 
-def _interest_boost(user_interest_set: frozenset[str] | None, campaign_interests: list[str]) -> float:
+def _interest_boost(
+    user_interest_set: frozenset[str] | None,
+    campaign_interests: list[str],
+    campaign_interests_lowered: frozenset[str] | None = None,
+) -> float:
     if not user_interest_set or not campaign_interests:
         return 0.0
-    campaign_set = {i.lower() for i in campaign_interests}
+    campaign_set = campaign_interests_lowered if campaign_interests_lowered is not None else frozenset(i.lower() for i in campaign_interests)
     overlap = len(user_interest_set & campaign_set)
     return min(overlap * INTEREST_BOOST, 0.15)
 
 
-def _gender_boost(user_gender: str | None, campaign_genders: str | list[str] | None) -> float:
+def _gender_boost(
+    user_gender: str | None,
+    campaign_genders: str | list[str] | None,
+    campaign_genders_lowered: list[str] | None = None,
+    campaign_genders_lowered_str: str | None = None,
+) -> float:
     if not user_gender or not campaign_genders:
         return 0.0
-    if isinstance(campaign_genders, str) and campaign_genders.lower() == "all":
-        return GENDER_BOOST
-    if isinstance(campaign_genders, list):
-        if user_gender.lower() in [g.lower() for g in campaign_genders]:
+    user_lower = user_gender.lower()
+    if isinstance(campaign_genders, str):
+        g_lower = campaign_genders_lowered_str if campaign_genders_lowered_str is not None else campaign_genders.lower()
+        if g_lower == "all":
             return GENDER_BOOST
-    elif user_gender.lower() == campaign_genders.lower():
-        return GENDER_BOOST
+        if user_lower == g_lower:
+            return GENDER_BOOST
+    elif isinstance(campaign_genders, list):
+        g_list = campaign_genders_lowered if campaign_genders_lowered is not None else [g.lower() for g in campaign_genders]
+        if user_lower in g_list:
+            return GENDER_BOOST
     return 0.0

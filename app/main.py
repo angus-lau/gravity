@@ -21,7 +21,7 @@ from app.schemas import (
     TimingMetadata,
 )
 
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=5)
 
 
 @asynccontextmanager
@@ -110,10 +110,17 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 1: Safety ML + Query Embedding (parallel, ~5-8ms) ──
+    # ── Tier 1: Raw embedding → Safety + Expanded Embedding + BM25 (parallel) ──
+    # Compute raw query embedding first (shared with safety classifier)
+    t0_raw = time.perf_counter()
+    raw_embedding = get_embedding_model().encode(request.query).flatten()
+    timing["raw_embedding_ms"] = (time.perf_counter() - t0_raw) * 1000
+
+    # Run safety, expanded embedding, AND BM25 in parallel
+    # BM25 only needs the raw query string — no reason to wait for Tier 1 to finish
     def compute_safety():
         t0 = time.perf_counter()
-        result = get_safety_classifier().classify(request.query)
+        result = get_safety_classifier().classify(request.query, query_embedding=raw_embedding)
         return result, (time.perf_counter() - t0) * 1000
 
     def compute_embedding():
@@ -122,11 +129,24 @@ async def retrieve(request: RetrievalRequest):
         emb = get_embedding_model().encode_query(request.query, ctx)
         return emb, (time.perf_counter() - t0) * 1000
 
+    def compute_bm25():
+        t0 = time.perf_counter()
+        try:
+            from app.retrieval.bm25_index import get_bm25_index
+            bm25 = get_bm25_index()
+            if bm25.is_loaded:
+                results = bm25.search(request.query, top_k=2000)
+                return results, (time.perf_counter() - t0) * 1000
+        except ImportError:
+            pass
+        return [], (time.perf_counter() - t0) * 1000
+
     safety_future = loop.run_in_executor(_executor, compute_safety)
     emb_future = loop.run_in_executor(_executor, compute_embedding)
+    bm25_future = loop.run_in_executor(_executor, compute_bm25)
 
-    (safety_result, timing["safety_ms"]), (embedding, timing["embedding_ms"]) = await asyncio.gather(
-        safety_future, emb_future
+    (safety_result, timing["safety_ms"]), (embedding, timing["embedding_ms"]), (bm25_candidates, timing["bm25_search_ms"]) = await asyncio.gather(
+        safety_future, emb_future, bm25_future
     )
 
     # Early stop if unsafe
@@ -158,7 +178,8 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 2: Commercial intent + FAISS + BM25 + Categories (parallel) ──
+    # ── Tier 2: Commercial intent + FAISS + Categories + Image (parallel) ──
+    # BM25 already completed above in Tier 1
     def compute_commercial():
         t0 = time.perf_counter()
         score = get_commercial_classifier().score(request.query, safety_result)
@@ -174,18 +195,6 @@ async def retrieve(request: RetrievalRequest):
         index = get_campaign_index()
         candidates = index.search(embedding, top_k=2000)
         return candidates, (time.perf_counter() - t0) * 1000
-
-    def compute_bm25():
-        t0 = time.perf_counter()
-        try:
-            from app.retrieval.bm25_index import get_bm25_index
-            bm25 = get_bm25_index()
-            if bm25.is_loaded:
-                results = bm25.search(request.query, top_k=2000)
-                return results, (time.perf_counter() - t0) * 1000
-        except ImportError:
-            pass
-        return [], (time.perf_counter() - t0) * 1000
 
     def compute_image_search():
         t0 = time.perf_counter()
@@ -204,21 +213,19 @@ async def retrieve(request: RetrievalRequest):
             pass
         return [], (time.perf_counter() - t0) * 1000
 
-    # Run all tier 2 tasks in parallel
+    # Run remaining tier 2 tasks in parallel
     commercial_future = loop.run_in_executor(_executor, compute_commercial)
     categories_future = loop.run_in_executor(_executor, compute_categories)
     faiss_future = loop.run_in_executor(_executor, compute_faiss)
-    bm25_future = loop.run_in_executor(_executor, compute_bm25)
     image_future = loop.run_in_executor(_executor, compute_image_search)
 
     (
         (eligibility, timing["commercial_ms"]),
         (categories, timing["category_match_ms"]),
         (faiss_candidates, timing["faiss_search_ms"]),
-        (bm25_candidates, timing["bm25_search_ms"]),
         (image_candidates, timing["image_search_ms"]),
     ) = await asyncio.gather(
-        commercial_future, categories_future, faiss_future, bm25_future, image_future
+        commercial_future, categories_future, faiss_future, image_future
     )
 
     timing["eligibility_ms"] = timing["blocklist_ms"] + timing["safety_ms"] + timing["commercial_ms"]

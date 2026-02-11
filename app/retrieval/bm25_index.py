@@ -1,8 +1,10 @@
 import json
 import re
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 from rank_bm25 import BM25Okapi
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
@@ -19,6 +21,9 @@ class BM25Index:
     """Lexical search using BM25Okapi over campaign text."""
 
     _instance: "BM25Index | None" = None
+
+    _cache: OrderedDict[str, list[tuple[str, float]]] = OrderedDict()
+    _cache_max_size: int = 10000
 
     def __init__(self):
         self.index: BM25Okapi | None = None
@@ -64,14 +69,23 @@ class BM25Index:
         if not self.is_loaded:
             return []
 
+        cache_key = f"{query.lower().strip()}:{top_k}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         tokens = _tokenize(query)
         if not tokens:
             return []
 
         scores = self.index.get_scores(tokens)
 
-        # Get top-k indices by score
-        top_indices = scores.argsort()[::-1][:top_k]
+        # Get top-k indices using argpartition: O(n + k log k) instead of O(n log n)
+        scores = np.asarray(scores)
+        k = min(top_k, len(scores))
+        if k == 0:
+            return []
+        top_k_unsorted = np.argpartition(-scores, k - 1)[:k]
+        top_indices = top_k_unsorted[np.argsort(-scores[top_k_unsorted])]
 
         results = []
         for idx in top_indices:
@@ -79,6 +93,9 @@ class BM25Index:
             if score > 0:
                 results.append((self.campaign_ids[idx], score))
 
+        self._cache[cache_key] = results
+        if len(self._cache) > self._cache_max_size:
+            self._cache.popitem(last=False)
         return results
 
 

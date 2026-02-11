@@ -41,6 +41,8 @@ class CampaignIndex:
             with open(campaigns_path) as f:
                 campaigns_list = json.load(f)
                 self.campaigns = {c["campaign_id"]: c for c in campaigns_list}
+            # Pre-compute targeting fields for faster reranking
+            self._precompute_targeting()
 
     @property
     def is_loaded(self) -> bool:
@@ -66,6 +68,23 @@ class CampaignIndex:
                 results.append((self.campaign_ids[idx], float(score)))
 
         return results
+
+    def _precompute_targeting(self):
+        """Pre-normalize campaign targeting fields at load time for faster reranking."""
+        from app.retrieval.ranker import _normalize_location
+        for campaign in self.campaigns.values():
+            targeting = campaign.get("targeting", {})
+            locs = targeting.get("locations", [])
+            if locs:
+                targeting["_locations_normalized"] = [_normalize_location(loc) for loc in locs]
+            interests = targeting.get("interests", [])
+            if interests:
+                targeting["_interests_lowered"] = frozenset(i.lower() for i in interests)
+            genders = targeting.get("genders")
+            if isinstance(genders, list):
+                targeting["_genders_lowered"] = [g.lower() for g in genders]
+            elif isinstance(genders, str):
+                targeting["_genders_lowered_str"] = genders.lower()
 
     def get_campaign(self, campaign_id: str) -> dict | None:
         return self.campaigns.get(campaign_id)

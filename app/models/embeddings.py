@@ -35,8 +35,19 @@ class EmbeddingModel:
         return cls._instance
 
     def encode(self, texts: list[str] | str, normalize: bool = True) -> np.ndarray:
+        # Cache single-string encodes (raw query embeddings)
         if isinstance(texts, str):
-            texts = [texts]
+            cache_key = f"{texts.lower().strip()}:{normalize}"
+            if cache_key in self._cache:
+                return self._cache[cache_key]
+            embeddings = self.model.encode(
+                [texts],
+                normalize_embeddings=normalize,
+                show_progress_bar=False,
+            ).astype(np.float32)
+            if len(self._cache) < self._cache_max_size:
+                self._cache[cache_key] = embeddings
+            return embeddings
         embeddings = self.model.encode(
             texts,
             normalize_embeddings=normalize,
@@ -52,15 +63,8 @@ class EmbeddingModel:
             if context.get("interests"):
                 parts.append(" ".join(context["interests"]))
         combined = " ".join(parts)
-        cache_key = combined.lower().strip()
-
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-
-        embedding = self.encode(combined)
-        if len(self._cache) < self._cache_max_size:
-            self._cache[cache_key] = embedding
-        return embedding
+        # Use same cache key format as encode() to avoid double-caching
+        return self.encode(combined)
 
 
 @lru_cache(maxsize=1)

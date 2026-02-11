@@ -19,6 +19,8 @@ class QueryExpander:
         self._synonyms: dict[str, list[str]] = {}
         self._patterns: dict[str, re.Pattern] = {}
         self._keyword_model = None
+        self._expand_cache: dict[str, str] = {}
+        self._expand_cache_max_size: int = 10000
         self._load()
 
     @classmethod
@@ -43,6 +45,9 @@ class QueryExpander:
 
         for term in self._synonyms:
             self._patterns[term] = re.compile(r'\b' + re.escape(term) + r'\b', re.IGNORECASE)
+
+        # Pre-sort by length descending (longest-first match) once at load time
+        self._sorted_terms = sorted(self._synonyms.keys(), key=len, reverse=True)
 
     def _get_keyword_model(self):
         """Lazy-load KeyBERT using the existing embedding model."""
@@ -75,12 +80,15 @@ class QueryExpander:
         1. Rule-based synonym expansion for known terms
         2. KeyBERT keyword extraction for vague/short queries
         """
+        cache_key = query.lower().strip()
+        if cache_key in self._expand_cache:
+            return self._expand_cache[cache_key]
+
         q_lower = query.lower()
         added: list[str] = []
 
         # Step 1: Rule-based synonym expansion
-        sorted_terms = sorted(self._synonyms.keys(), key=len, reverse=True)
-        for term in sorted_terms:
+        for term in self._sorted_terms:
             if len(added) >= MAX_EXPANSION_TERMS:
                 break
             if self._patterns[term].search(query):
@@ -106,9 +114,15 @@ class QueryExpander:
                 pass  # Graceful degradation — synonym expansion still works
 
         if not added:
-            return query
+            result = query
+        else:
+            result = f"{query} {' '.join(added)}"
 
-        return f"{query} {' '.join(added)}"
+        self._expand_cache[cache_key] = result
+        if len(self._expand_cache) > self._expand_cache_max_size:
+            oldest = next(iter(self._expand_cache))
+            del self._expand_cache[oldest]
+        return result
 
 
 @lru_cache(maxsize=1)

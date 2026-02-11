@@ -1,6 +1,5 @@
 import re
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -180,12 +179,15 @@ class SafetyClassifier:
 
     def __init__(self):
         self._embedding_model = EmbeddingModel.get_instance()
-        self._dangerous_embs = [
+        # Stack anchor embeddings into matrices for vectorized cosine sim
+        # Embeddings are already L2-normalized by sentence-transformers,
+        # so cosine sim = dot product (skip norm computation)
+        self._dangerous_mat = np.vstack([
             self._embedding_model.encode(a).flatten() for a in DANGEROUS_ANCHORS
-        ]
-        self._safe_embs = [
+        ])
+        self._safe_mat = np.vstack([
             self._embedding_model.encode(a).flatten() for a in SAFE_ANCHORS
-        ]
+        ])
 
         from onnxruntime import SessionOptions
         session_options = SessionOptions()
@@ -206,14 +208,12 @@ class SafetyClassifier:
             cls._instance = cls()
         return cls._instance
 
-    @staticmethod
-    def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
-        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
-    def _get_danger_score(self, query: str) -> tuple[float, float]:
-        q_emb = self._embedding_model.encode(query).flatten()
-        max_danger = max(self._cosine_sim(q_emb, d) for d in self._dangerous_embs)
-        max_safe = max(self._cosine_sim(q_emb, s) for s in self._safe_embs)
+    def _get_danger_score(self, query: str, query_embedding: np.ndarray | None = None) -> tuple[float, float]:
+        q_emb = query_embedding if query_embedding is not None else self._embedding_model.encode(query).flatten()
+        # Vectorized dot product against all anchors at once
+        # Embeddings are L2-normalized, so dot product = cosine similarity
+        max_danger = float((self._dangerous_mat @ q_emb).max())
+        max_safe = float((self._safe_mat @ q_emb).max())
         return max_danger, max_safe
 
     def _get_toxicity_score(self, query: str) -> float:
@@ -224,7 +224,7 @@ class SafetyClassifier:
         probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
         return probs[0][1].item()
 
-    def classify(self, query: str) -> SafetyResult:
+    def classify(self, query: str, query_embedding: np.ndarray | None = None) -> SafetyResult:
         """
         Classify query safety. Returns SafetyResult with base_score,
         raw toxicity, and danger_diff for downstream use.
@@ -233,12 +233,8 @@ class SafetyClassifier:
         if normalized in self._cache:
             return self._cache[normalized]
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            danger_future = executor.submit(self._get_danger_score, query)
-            toxicity_future = executor.submit(self._get_toxicity_score, query)
-
-            danger_sim, safe_sim = danger_future.result()
-            toxicity = toxicity_future.result()
+        danger_sim, safe_sim = self._get_danger_score(query, query_embedding)
+        toxicity = self._get_toxicity_score(query)
 
         danger_diff = danger_sim - safe_sim
 
