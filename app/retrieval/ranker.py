@@ -73,54 +73,79 @@ def rerank(
     top_k: int = 1000,
 ) -> list[Campaign]:
     index = get_campaign_index()
+    campaigns_db = index.campaigns
 
-    # Batch-fetch all campaign data upfront instead of one-by-one
-    campaign_data_map: dict[str, dict] = {}
-    for campaign_id, _ in candidates:
-        if campaign_id not in campaign_data_map:
-            data = index.get_campaign(campaign_id)
-            if data is not None:
-                campaign_data_map[campaign_id] = data
-
-    # Pre-compute user interests set once (avoids rebuilding per candidate)
+    # Pre-compute user context once outside the loop
+    has_context = context is not None
+    user_loc: str | None = None
+    user_loc_norm: str | None = None
+    user_loc_state: str | None = None
+    user_age: int | None = None
     user_interest_set: frozenset[str] | None = None
-    if context and context.interests:
-        user_interest_set = frozenset(i.lower() for i in context.interests)
+    user_gender_lower: str | None = None
 
-    # Pre-normalize user location once (avoids per-candidate normalization)
-    user_location_normalized: str | None = None
-    if context and context.location:
-        user_location_normalized = _normalize_location(context.location)
+    if has_context:
+        if context.location:
+            user_loc = context.location
+            user_loc_norm = _normalize_location(user_loc)
+            user_loc_state = _extract_state(user_loc)
+        user_age = context.age
+        if context.interests:
+            user_interest_set = frozenset(i.lower() for i in context.interests)
+        if context.gender:
+            user_gender_lower = context.gender.lower()
 
     scored = []
+    scored_append = scored.append
+
     for campaign_id, base_score in candidates:
-        campaign_data = campaign_data_map.get(campaign_id)
-        if not campaign_data:
+        campaign_data = campaigns_db.get(campaign_id)
+        if campaign_data is None:
             continue
 
         boost = 0.0
-        if context:
-            targeting = campaign_data.get("targeting", {})
-            boost += _location_boost(
-                context.location,
-                targeting.get("locations", []),
-                user_location_normalized,
-                targeting.get("_locations_normalized"),
-            )
-            boost += _age_boost(context.age, targeting.get("age_range"))
-            boost += _interest_boost(
-                user_interest_set,
-                targeting.get("interests", []),
-                targeting.get("_interests_lowered"),
-            )
-            boost += _gender_boost(
-                context.gender,
-                targeting.get("genders"),
-                targeting.get("_genders_lowered"),
-                targeting.get("_genders_lowered_str"),
-            )
 
-        scored.append((campaign_data, base_score + boost))
+        if has_context:
+            targeting = campaign_data.get("targeting")
+            if targeting:
+                # Inline location boost
+                if user_loc_norm:
+                    clocs = targeting.get("_locations_normalized")
+                    if clocs:
+                        if user_loc_norm in clocs:
+                            boost += LOCATION_BOOST
+                        elif not user_loc_state:
+                            for cl in clocs:
+                                if user_loc_norm in cl or cl in user_loc_norm:
+                                    boost += LOCATION_BOOST
+                                    break
+
+                # Inline age boost
+                if user_age is not None:
+                    age_range = targeting.get("age_range")
+                    if age_range and len(age_range) == 2 and age_range[0] <= user_age <= age_range[1]:
+                        boost += AGE_BOOST
+
+                # Inline interest boost
+                if user_interest_set:
+                    ci = targeting.get("_interests_lowered")
+                    if ci:
+                        overlap = len(user_interest_set & ci)
+                        if overlap:
+                            boost += min(overlap * INTEREST_BOOST, 0.15)
+
+                # Inline gender boost
+                if user_gender_lower:
+                    gl = targeting.get("_genders_lowered")
+                    if gl:
+                        if user_gender_lower in gl:
+                            boost += GENDER_BOOST
+                    else:
+                        gs = targeting.get("_genders_lowered_str")
+                        if gs and (gs == "all" or gs == user_gender_lower):
+                            boost += GENDER_BOOST
+
+        scored_append((campaign_data, base_score + boost))
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
@@ -128,12 +153,13 @@ def rerank(
     max_score = scored[0][1] if scored else 1.0
     if max_score <= 0:
         max_score = 1.0
+    inv_max = 1.0 / max_score
 
-    # Use model_construct to skip Pydantic validation for performance
+    # Build Campaign objects only for top_k results
     return [
         Campaign.model_construct(
             campaign_id=c["campaign_id"],
-            relevance_score=round(score / max_score, 4),
+            relevance_score=round(score * inv_max, 4),
             advertiser=c.get("advertiser"),
             title=c.get("title"),
             categories=c.get("categories"),

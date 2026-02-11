@@ -53,65 +53,117 @@ def random_context():
     }
 
 
-async def make_request(client: httpx.AsyncClient, query: str, base_url: str) -> float:
+async def make_request(
+    client: httpx.AsyncClient, query: str, base_url: str
+) -> dict:
     payload = {"query": query, "context": random_context()}
     start = time.perf_counter()
     resp = await client.post(f"{base_url}/api/retrieve", json=payload)
-    elapsed = (time.perf_counter() - start) * 1000
+    rtt_ms = (time.perf_counter() - start) * 1000
     resp.raise_for_status()
-    return elapsed
+    body = resp.json()
+    server_ms = body.get("latency_ms", 0)
+    timing = body.get("metadata", {}).get("timing", {})
+    return {
+        "query": query,
+        "rtt_ms": rtt_ms,
+        "server_ms": server_ms,
+        "timing": timing,
+    }
 
 
-async def run_benchmark(n_requests: int, concurrency: int, base_url: str) -> list[float]:
-    latencies = []
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def bounded_request(client: httpx.AsyncClient, query: str):
-        async with semaphore:
-            return await make_request(client, query, base_url)
-
+async def run_benchmark(
+    n_requests: int, base_url: str
+) -> list[dict]:
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # warmup
-        await make_request(client, QUERIES[0], base_url)
+        # Warmup — one request per unique query so caches are hot
+        print("Warming up caches...")
+        for query in QUERIES:
+            await make_request(client, query, base_url)
+        print(f"  Warmed {len(QUERIES)} unique queries\n")
 
-        tasks = [
-            bounded_request(client, random.choice(QUERIES)) for _ in range(n_requests)
-        ]
-        latencies = await asyncio.gather(*tasks)
+        results = []
+        for i in range(n_requests):
+            query = random.choice(QUERIES)
+            result = await make_request(client, query, base_url)
+            results.append(result)
 
-    return list(latencies)
+    return results
 
 
 def percentile(data: list[float], p: float) -> float:
-    k = (len(data) - 1) * (p / 100)
+    data_sorted = sorted(data)
+    k = (len(data_sorted) - 1) * (p / 100)
     f = int(k)
     c = f + 1
-    if c >= len(data):
-        return data[-1]
-    return data[f] + (k - f) * (data[c] - data[f])
+    if c >= len(data_sorted):
+        return data_sorted[-1]
+    return data_sorted[f] + (k - f) * (data_sorted[c] - data_sorted[f])
 
 
-def print_results(latencies: list[float]):
-    latencies.sort()
-    print(f"\n{'='*50}")
-    print(f"BENCHMARK RESULTS ({len(latencies)} requests)")
-    print(f"{'='*50}")
-    print(f"  min:    {min(latencies):>8.2f} ms")
-    print(f"  p50:    {percentile(latencies, 50):>8.2f} ms")
-    print(f"  p90:    {percentile(latencies, 90):>8.2f} ms")
-    print(f"  p95:    {percentile(latencies, 95):>8.2f} ms")
-    print(f"  p99:    {percentile(latencies, 99):>8.2f} ms")
-    print(f"  max:    {max(latencies):>8.2f} ms")
-    print(f"  mean:   {statistics.mean(latencies):>8.2f} ms")
-    print(f"  stdev:  {statistics.stdev(latencies):>8.2f} ms")
-    print(f"{'='*50}")
+def print_results(results: list[dict]):
+    server_times = [r["server_ms"] for r in results]
+    rtt_times = [r["rtt_ms"] for r in results]
+
+    # Collect per-stage timings
+    stage_keys = [
+        "blocklist_ms", "safety_ms", "commercial_ms", "embedding_ms",
+        "bm25_search_ms", "faiss_search_ms", "category_match_ms",
+        "fusion_ms", "reranking_ms", "image_search_ms",
+    ]
+    stage_data: dict[str, list[float]] = {k: [] for k in stage_keys}
+    for r in results:
+        for k in stage_keys:
+            v = r["timing"].get(k)
+            if v is not None:
+                stage_data[k].append(v)
+
+    print(f"{'='*62}")
+    print(f"BENCHMARK RESULTS ({len(results)} requests, caches warm)")
+    print(f"{'='*62}")
+
+    print(f"\n  {'':20s} {'p50':>8s} {'p90':>8s} {'p95':>8s} {'p99':>8s} {'max':>8s}")
+    print(f"  {'-'*20} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8}")
+    print(
+        f"  {'Server (total)':20s}"
+        f" {percentile(server_times, 50):>7.1f}ms"
+        f" {percentile(server_times, 90):>7.1f}ms"
+        f" {percentile(server_times, 95):>7.1f}ms"
+        f" {percentile(server_times, 99):>7.1f}ms"
+        f" {max(server_times):>7.1f}ms"
+    )
+    for key in stage_keys:
+        values = stage_data[key]
+        if not values or max(values) < 0.01:
+            continue
+        label = key.replace("_ms", "")
+        print(
+            f"  {label:20s}"
+            f" {percentile(values, 50):>7.1f}ms"
+            f" {percentile(values, 90):>7.1f}ms"
+            f" {percentile(values, 95):>7.1f}ms"
+            f" {percentile(values, 99):>7.1f}ms"
+            f" {max(values):>7.1f}ms"
+        )
+    print(
+        f"  {'RTT (inc. network)':20s}"
+        f" {percentile(rtt_times, 50):>7.1f}ms"
+        f" {percentile(rtt_times, 90):>7.1f}ms"
+        f" {percentile(rtt_times, 95):>7.1f}ms"
+        f" {percentile(rtt_times, 99):>7.1f}ms"
+        f" {max(rtt_times):>7.1f}ms"
+    )
+
+    network = [r["rtt_ms"] - r["server_ms"] for r in results]
+    print(f"\n  Network overhead:  p50={percentile(network, 50):.0f}ms  p95={percentile(network, 95):.0f}ms")
+    print(f"  Server mean: {statistics.mean(server_times):.1f}ms  stdev: {statistics.stdev(server_times):.1f}ms")
 
     target = 100
-    under_target = sum(1 for l in latencies if l < target)
-    pct = under_target / len(latencies) * 100
-    status = "PASS" if percentile(latencies, 95) < target else "FAIL"
-    print(f"  <{target}ms: {under_target}/{len(latencies)} ({pct:.1f}%) [{status}]")
-    print(f"{'='*50}\n")
+    under_target = sum(1 for t in server_times if t < target)
+    pct = under_target / len(server_times) * 100
+    status = "PASS" if percentile(server_times, 95) < target else "FAIL"
+    print(f"\n  Server <{target}ms: {under_target}/{len(server_times)} ({pct:.1f}%) [{status}]")
+    print(f"{'='*62}\n")
 
 
 def main():
@@ -121,10 +173,10 @@ def main():
     args = parser.parse_args()
 
     print(f"Benchmarking {args.url}")
-    print(f"  requests: {args.requests}")
+    print(f"  requests: {args.requests}\n")
 
-    latencies = asyncio.run(run_benchmark(args.requests, 1, args.url))
-    print_results(latencies)
+    results = asyncio.run(run_benchmark(args.requests, args.url))
+    print_results(results)
 
 
 if __name__ == "__main__":

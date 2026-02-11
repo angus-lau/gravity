@@ -119,6 +119,37 @@ class CommercialIntentClassifier:
             self._cache.popitem(last=False)
         return score
 
+    def score_with_precomputed_sentiment(
+        self, query: str, safety: SafetyResult, sentiment: float
+    ) -> float:
+        """Score using a pre-computed sentiment value (avoids redundant ONNX call)."""
+        cache_key = f"{query.lower().strip()}:{safety.base_score:.6f}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        base_score = safety.base_score
+
+        if self._has_commercial_intent(query):
+            base_score += self.COMMERCIAL_BOOST
+
+        is_sensitive = self._is_sensitive(query)
+        if is_sensitive:
+            base_score -= self.SENSITIVE_PENALTY
+
+        if (
+            not is_sensitive
+            and safety.toxicity < self.TOXICITY_HIGH_THRESHOLD
+            and sentiment > 0.5
+        ):
+            base_score += (sentiment - 0.5) * self.SENTIMENT_BOOST_WEIGHT
+
+        score = max(0.0, min(1.0, base_score))
+
+        self._cache[cache_key] = score
+        if len(self._cache) > self._cache_max_size:
+            self._cache.popitem(last=False)
+        return score
+
 
 @lru_cache(maxsize=1)
 def get_commercial_classifier() -> CommercialIntentClassifier:

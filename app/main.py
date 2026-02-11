@@ -110,18 +110,26 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 1: Raw embedding → Safety + Expanded Embedding + BM25 (parallel) ──
+    # ── Tier 1: Everything in parallel ──
     # Compute raw query embedding first (shared with safety classifier)
     t0_raw = time.perf_counter()
     raw_embedding = get_embedding_model().encode(request.query).flatten()
     timing["raw_embedding_ms"] = (time.perf_counter() - t0_raw) * 1000
 
-    # Run safety, expanded embedding, AND BM25 in parallel
-    # BM25 only needs the raw query string — no reason to wait for Tier 1 to finish
+    # Run safety + commercial sentiment + embedding + BM25 all in parallel
+    # Commercial sentiment is the slow part (~40ms ONNX) — start it eagerly
+    # and combine with safety result after both finish
     def compute_safety():
         t0 = time.perf_counter()
         result = get_safety_classifier().classify(request.query, query_embedding=raw_embedding)
         return result, (time.perf_counter() - t0) * 1000
+
+    def compute_commercial_sentiment():
+        """Pre-compute the expensive sentiment ONNX call in parallel with safety."""
+        t0 = time.perf_counter()
+        classifier = get_commercial_classifier()
+        sentiment = classifier._get_sentiment_score(request.query)
+        return sentiment, (time.perf_counter() - t0) * 1000
 
     def compute_embedding():
         t0 = time.perf_counter()
@@ -142,12 +150,16 @@ async def retrieve(request: RetrievalRequest):
         return [], (time.perf_counter() - t0) * 1000
 
     safety_future = loop.run_in_executor(_executor, compute_safety)
+    sentiment_future = loop.run_in_executor(_executor, compute_commercial_sentiment)
     emb_future = loop.run_in_executor(_executor, compute_embedding)
     bm25_future = loop.run_in_executor(_executor, compute_bm25)
 
-    (safety_result, timing["safety_ms"]), (embedding, timing["embedding_ms"]), (bm25_candidates, timing["bm25_search_ms"]) = await asyncio.gather(
-        safety_future, emb_future, bm25_future
-    )
+    (
+        (safety_result, timing["safety_ms"]),
+        (precomputed_sentiment, timing["commercial_ms"]),
+        (embedding, timing["embedding_ms"]),
+        (bm25_candidates, timing["bm25_search_ms"]),
+    ) = await asyncio.gather(safety_future, sentiment_future, emb_future, bm25_future)
 
     # Early stop if unsafe
     if safety_result.is_blocked:
@@ -178,13 +190,47 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 2: Commercial intent + FAISS + Categories + Image (parallel) ──
-    # BM25 already completed above in Tier 1
-    def compute_commercial():
-        t0 = time.perf_counter()
-        score = get_commercial_classifier().score(request.query, safety_result)
-        return score, (time.perf_counter() - t0) * 1000
+    # Combine safety result with pre-computed sentiment (cheap, ~0.01ms)
+    t0_combine = time.perf_counter()
+    eligibility = get_commercial_classifier().score_with_precomputed_sentiment(
+        request.query, safety_result, precomputed_sentiment
+    )
+    timing["commercial_combine_ms"] = (time.perf_counter() - t0_combine) * 1000
 
+    timing["eligibility_ms"] = timing["blocklist_ms"] + timing["safety_ms"] + timing["commercial_ms"]
+
+    # Short-circuit: don't retrieve campaigns for ineligible queries
+    ELIGIBILITY_THRESHOLD = 0.1
+    if eligibility < ELIGIBILITY_THRESHOLD:
+        total_ms = (time.perf_counter() - start) * 1000
+        return RetrievalResponse(
+            ad_eligibility=round(eligibility, 4),
+            extracted_categories=[],
+            campaigns=[],
+            latency_ms=round(total_ms, 2),
+            metadata=ResponseMetadata(
+                timing=TimingMetadata(
+                    eligibility_ms=round(timing["eligibility_ms"], 2),
+                    embedding_ms=round(timing["embedding_ms"], 2),
+                    category_match_ms=0,
+                    faiss_search_ms=0,
+                    reranking_ms=0,
+                    total_ms=round(total_ms, 2),
+                    blocklist_ms=round(timing.get("blocklist_ms", 0), 2),
+                    safety_ms=round(timing.get("safety_ms", 0), 2),
+                    commercial_ms=round(timing.get("commercial_ms", 0), 2),
+                    bm25_search_ms=round(timing.get("bm25_search_ms", 0), 2),
+                ),
+                model_versions={
+                    "embedding": "all-MiniLM-L6-v2",
+                    "eligibility": "modular-tiered",
+                },
+                query_embedding_dim=384,
+                candidates_before_rerank=0,
+            ),
+        )
+
+    # ── Tier 2: FAISS + Categories + Image (parallel) ──
     def compute_categories():
         t0 = time.perf_counter()
         cats = get_category_matcher().match(embedding, top_k=5)
@@ -213,54 +259,15 @@ async def retrieve(request: RetrievalRequest):
             pass
         return [], (time.perf_counter() - t0) * 1000
 
-    # Run remaining tier 2 tasks in parallel
-    commercial_future = loop.run_in_executor(_executor, compute_commercial)
     categories_future = loop.run_in_executor(_executor, compute_categories)
     faiss_future = loop.run_in_executor(_executor, compute_faiss)
     image_future = loop.run_in_executor(_executor, compute_image_search)
 
     (
-        (eligibility, timing["commercial_ms"]),
         (categories, timing["category_match_ms"]),
         (faiss_candidates, timing["faiss_search_ms"]),
         (image_candidates, timing["image_search_ms"]),
-    ) = await asyncio.gather(
-        commercial_future, categories_future, faiss_future, image_future
-    )
-
-    timing["eligibility_ms"] = timing["blocklist_ms"] + timing["safety_ms"] + timing["commercial_ms"]
-
-    # Short-circuit: don't retrieve campaigns for ineligible queries
-    ELIGIBILITY_THRESHOLD = 0.1
-    if eligibility < ELIGIBILITY_THRESHOLD:
-        total_ms = (time.perf_counter() - start) * 1000
-        return RetrievalResponse(
-            ad_eligibility=round(eligibility, 4),
-            extracted_categories=[],
-            campaigns=[],
-            latency_ms=round(total_ms, 2),
-            metadata=ResponseMetadata(
-                timing=TimingMetadata(
-                    eligibility_ms=round(timing["eligibility_ms"], 2),
-                    embedding_ms=round(timing["embedding_ms"], 2),
-                    category_match_ms=round(timing["category_match_ms"], 2),
-                    faiss_search_ms=round(timing["faiss_search_ms"], 2),
-                    reranking_ms=0,
-                    total_ms=round(total_ms, 2),
-                    blocklist_ms=round(timing.get("blocklist_ms", 0), 2),
-                    safety_ms=round(timing.get("safety_ms", 0), 2),
-                    commercial_ms=round(timing.get("commercial_ms", 0), 2),
-                    bm25_search_ms=round(timing.get("bm25_search_ms", 0), 2),
-                    image_search_ms=round(timing.get("image_search_ms", 0), 2),
-                ),
-                model_versions={
-                    "embedding": "all-MiniLM-L6-v2",
-                    "eligibility": "modular-tiered",
-                },
-                query_embedding_dim=384,
-                candidates_before_rerank=0,
-            ),
-        )
+    ) = await asyncio.gather(categories_future, faiss_future, image_future)
 
     # ── Tier 3: Fusion + Reranking ──
     t0 = time.perf_counter()
@@ -274,7 +281,7 @@ async def retrieve(request: RetrievalRequest):
 
     if len(all_sources) > 1:
         from app.retrieval.fusion import reciprocal_rank_fusion
-        candidates = reciprocal_rank_fusion(all_sources, top_k=2000)
+        candidates = reciprocal_rank_fusion(all_sources, top_k=1000)
     else:
         candidates = faiss_candidates
 
