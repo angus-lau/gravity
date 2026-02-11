@@ -75,7 +75,6 @@ def rerank(
     index = get_campaign_index()
     campaigns_db = index.campaigns
 
-    # Pre-compute user context once outside the loop
     has_context = context is not None
     user_loc: str | None = None
     user_loc_norm: str | None = None
@@ -108,7 +107,6 @@ def rerank(
         if has_context:
             targeting = campaign_data.get("targeting")
             if targeting:
-                # Inline location boost
                 if user_loc_norm:
                     clocs = targeting.get("_locations_normalized")
                     if clocs:
@@ -120,13 +118,11 @@ def rerank(
                                     boost += LOCATION_BOOST
                                     break
 
-                # Inline age boost
                 if user_age is not None:
                     age_range = targeting.get("age_range")
                     if age_range and len(age_range) == 2 and age_range[0] <= user_age <= age_range[1]:
                         boost += AGE_BOOST
 
-                # Inline interest boost
                 if user_interest_set:
                     ci = targeting.get("_interests_lowered")
                     if ci:
@@ -134,7 +130,6 @@ def rerank(
                         if overlap:
                             boost += min(overlap * INTEREST_BOOST, 0.15)
 
-                # Inline gender boost
                 if user_gender_lower:
                     gl = targeting.get("_genders_lowered")
                     if gl:
@@ -149,13 +144,11 @@ def rerank(
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # Normalize scores to [0, 1] after sorting to preserve ranking signal
     max_score = scored[0][1] if scored else 1.0
     if max_score <= 0:
         max_score = 1.0
     inv_max = 1.0 / max_score
 
-    # Build Campaign objects only for top_k results
     return [
         Campaign.model_construct(
             campaign_id=c["campaign_id"],
@@ -178,23 +171,18 @@ def _location_boost(
         return 0.0
     if user_normalized is None:
         user_normalized = _normalize_location(user_loc)
-    # Use pre-normalized campaign locations if available (from index load time)
     if campaign_locs_normalized is None:
         campaign_locs_normalized = [_normalize_location(loc) for loc in campaign_locs]
     for campaign_normalized in campaign_locs_normalized:
         if user_normalized == campaign_normalized:
             return LOCATION_BOOST
-    # State-level matching (more precise than substring)
     user_state = _extract_state(user_loc)
     if user_state:
         for loc in campaign_locs:
             campaign_state = _extract_state(loc)
             if campaign_state and user_state == campaign_state:
                 return LOCATION_BOOST
-        # User input is a state name/abbrev — don't fall through to substring
-        # matching, which would produce false positives (e.g. "CA" in "Chicago")
         return 0.0
-    # Fallback: substring matching for partial matches
     for campaign_normalized in campaign_locs_normalized:
         if user_normalized in campaign_normalized or campaign_normalized in user_normalized:
             return LOCATION_BOOST

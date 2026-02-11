@@ -1,5 +1,3 @@
-"""FAISS index over CLIP text-proxy embeddings for image-based retrieval."""
-
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -11,8 +9,6 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 
 class CaptionIndex:
-    """FAISS index over CLIP text-proxy embeddings for campaign images."""
-
     _instance: "CaptionIndex | None" = None
 
     def __init__(self):

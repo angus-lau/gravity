@@ -18,7 +18,6 @@ COMMERCIAL_SIGNALS = {
     "great deal", "good deal", "best deal",
 }
 
-# Phrases that look like commercial signals but aren't
 COMMERCIAL_EXCLUSIONS = {"deal with", "deal breaker", "dealing with"}
 
 SENSITIVE_TERMS = {
@@ -32,8 +31,6 @@ SENSITIVE_TERMS = {
 
 
 class CommercialIntentClassifier:
-    """Scores commercial intent using keyword signals, sentiment, and sensitivity."""
-
     _instance: "CommercialIntentClassifier | None" = None
     _cache: OrderedDict[str, float] = OrderedDict()
     _sentiment_cache: dict[str, float] = {}
@@ -100,10 +97,6 @@ class CommercialIntentClassifier:
         return result
 
     def score(self, query: str, safety: SafetyResult) -> float:
-        """
-        Compute final eligibility score from commercial signals + safety result.
-        Starts from safety.base_score, applies commercial/sensitive/sentiment adjustments.
-        """
         q_lower = query.lower().strip()
         cache_key = f"{q_lower}:{safety.base_score:.6f}"
         if cache_key in self._cache:
@@ -135,7 +128,6 @@ class CommercialIntentClassifier:
     def score_with_precomputed_sentiment(
         self, query: str, safety: SafetyResult, sentiment: float
     ) -> float:
-        """Score using a pre-computed sentiment value (avoids redundant ONNX call)."""
         q_lower = query.lower().strip()
         cache_key = f"{q_lower}:{safety.base_score:.6f}"
         if cache_key in self._cache:

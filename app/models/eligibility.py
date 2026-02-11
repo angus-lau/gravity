@@ -1,5 +1,3 @@
-"""Eligibility scoring facade — delegates to modular safety + commercial classifiers."""
-
 from collections import OrderedDict
 from functools import lru_cache
 
@@ -8,14 +6,6 @@ from app.models.safety import get_blocklist_checker, get_safety_classifier
 
 
 class EligibilityClassifier:
-    """Thin facade preserving the original interface.
-
-    Internally delegates to:
-    - BlocklistChecker (tier 0, ~0.01ms)
-    - SafetyClassifier (tier 1, ~5-8ms)
-    - CommercialIntentClassifier (tier 2, ~3ms)
-    """
-
     _instance: "EligibilityClassifier | None" = None
     _cache: OrderedDict[str, float] = OrderedDict()
     _cache_max_size: int = 10000
@@ -32,23 +22,19 @@ class EligibilityClassifier:
         return cls._instance
 
     def score(self, query: str) -> float:
-        """Score ad eligibility 0.0-1.0. Backward-compatible interface."""
         normalized = query.lower().strip()
         if normalized in self._cache:
             return self._cache[normalized]
 
-        # Tier 0: blocklist (~0.01ms)
         if self._blocklist.is_blocked(query):
             self._cache_put(normalized, 0.0)
             return 0.0
 
-        # Tier 1: safety ML (~5-8ms)
         safety = self._safety.classify(query)
         if safety.is_blocked:
             self._cache_put(normalized, 0.0)
             return 0.0
 
-        # Tier 2: commercial intent (~3ms)
         score = self._commercial.score(query, safety)
         self._cache_put(normalized, score)
         return score

@@ -30,7 +30,6 @@ _MODEL_VERSIONS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load all models into memory
     embedding_model = get_embedding_model()
     get_blocklist_checker()
     get_safety_classifier()
@@ -39,7 +38,6 @@ async def lifespan(app: FastAPI):
     category_matcher = get_category_matcher()
     get_campaign_index()
 
-    # Warmup
     warmup_query = "best running shoes for marathon training"
     _ = eligibility_classifier.score(warmup_query)
     warmup_emb = embedding_model.encode(warmup_query)
@@ -51,7 +49,6 @@ async def lifespan(app: FastAPI):
     warmup_context = UserContext(gender="male", age=30, location="New York", interests=["fitness"])
     _ = rerank(warmup_candidates, warmup_context, top_k=1000)
 
-    # Phase 3: warmup BM25 if available
     try:
         from app.retrieval.bm25_index import get_bm25_index
         bm25 = get_bm25_index()
@@ -82,7 +79,6 @@ async def retrieve(request: RetrievalRequest):
     timing = {}
     loop = asyncio.get_event_loop()
 
-    # ── Tier 0: Blocklist check (synchronous, ~0.01ms) ──
     t0 = time.perf_counter()
     blocklist = get_blocklist_checker()
     is_blocked = blocklist.is_blocked(request.query)
@@ -111,20 +107,16 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 1: Everything in parallel ──
-    # Compute raw query embedding first (shared with safety classifier)
     t0_raw = time.perf_counter()
     raw_embedding = get_embedding_model().encode(request.query).flatten()
     timing["raw_embedding_ms"] = (time.perf_counter() - t0_raw) * 1000
 
-    # Fast path: if safety + commercial + embedding are all cached, skip thread pool
     query_normalized = request.query.lower().strip()
     safety_classifier = get_safety_classifier()
     cached_safety = safety_classifier._cache.get(query_normalized)
     embedding_model = get_embedding_model()
 
     if cached_safety is not None:
-        # All caches likely warm — run synchronously to avoid thread pool overhead
         t0 = time.perf_counter()
         safety_result = cached_safety
         timing["safety_ms"] = 0.0
@@ -147,7 +139,6 @@ async def retrieve(request: RetrievalRequest):
             bm25_candidates = []
         timing["bm25_search_ms"] = (time.perf_counter() - t0) * 1000
     else:
-        # Cold path: run everything in parallel via thread pool
         def compute_safety():
             t0 = time.perf_counter()
             result = safety_classifier.classify(request.query, query_embedding=raw_embedding)
@@ -188,7 +179,6 @@ async def retrieve(request: RetrievalRequest):
             (bm25_candidates, timing["bm25_search_ms"]),
         ) = await asyncio.gather(safety_future, sentiment_future, emb_future, bm25_future)
 
-    # Early stop if unsafe
     if safety_result.is_blocked:
         timing["eligibility_ms"] = timing["safety_ms"]
         total_ms = (time.perf_counter() - start) * 1000
@@ -214,7 +204,6 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # Combine safety result with pre-computed sentiment (cheap, ~0.01ms)
     t0_combine = time.perf_counter()
     eligibility = get_commercial_classifier().score_with_precomputed_sentiment(
         request.query, safety_result, precomputed_sentiment
@@ -223,7 +212,6 @@ async def retrieve(request: RetrievalRequest):
 
     timing["eligibility_ms"] = timing["blocklist_ms"] + timing["safety_ms"] + timing["commercial_ms"]
 
-    # Short-circuit: don't retrieve campaigns for ineligible queries
     ELIGIBILITY_THRESHOLD = 0.1
     if eligibility < ELIGIBILITY_THRESHOLD:
         total_ms = (time.perf_counter() - start) * 1000
@@ -251,7 +239,6 @@ async def retrieve(request: RetrievalRequest):
             ),
         )
 
-    # ── Tier 2: FAISS + Categories + Image (parallel) ──
     def compute_categories():
         t0 = time.perf_counter()
         cats = get_category_matcher().match(embedding, top_k=5)
@@ -290,10 +277,7 @@ async def retrieve(request: RetrievalRequest):
         (image_candidates, timing["image_search_ms"]),
     ) = await asyncio.gather(categories_future, faiss_future, image_future)
 
-    # ── Tier 3: Fusion + Reranking ──
     t0 = time.perf_counter()
-
-    # Fuse results from all retrieval sources
     all_sources = [faiss_candidates]
     if bm25_candidates:
         all_sources.append(bm25_candidates)
@@ -334,7 +318,6 @@ async def retrieve(request: RetrievalRequest):
 
 @app.post("/api/retrieve/image")
 async def retrieve_by_image(image: UploadFile = File(...), top_k: int = 100):
-    """Retrieve campaigns by uploading an image. Uses CLIP to match against campaign embeddings."""
     from app.schemas import ImageRetrievalResponse
 
     if not os.getenv("ENABLE_IMAGE_SEARCH", "").lower() in ("1", "true"):

@@ -25,10 +25,6 @@ SAFE_ANCHORS = [
     "everyday questions tasks and information",
 ]
 
-# ============================================================================
-# BLOCKLISTS
-# ============================================================================
-
 NSFW_TERMS = {
     "porn", "pornography", "xxx", "nsfw", "nude", "nudes", "naked",
     "sex video", "adult video", "onlyfans leak", "hentai",
@@ -61,11 +57,6 @@ TRAGEDY_TERMS = {
 
 _hate_patterns_compiled = [re.compile(p, re.IGNORECASE) for p in HATE_PATTERNS]
 
-# ============================================================================
-# LEETSPEAK / OBFUSCATION NORMALIZATION
-# ============================================================================
-
-# Character substitution map: common leetspeak + unicode lookalikes
 _LEET_MAP = str.maketrans({
     "0": "o", "1": "i", "3": "e", "4": "a", "5": "s",
     "7": "t", "8": "b", "9": "g",
@@ -80,39 +71,18 @@ _LEET_MAP = str.maketrans({
     "\u0445": "x",  # Cyrillic х
 })
 
-# Non-space separators between word chars: "b.o.m.b", "b-o-m-b", "s3lf-h4rm"
-# Does NOT strip spaces (preserves "kill myself" as two words)
 _PUNCTUATION_SEPARATOR = re.compile(r"(?<=\w)[.\-_*/|\\]+(?=\w)")
 
-# Chains of single chars separated by spaces: "b o m b" → "bomb"
-# Requires 3+ single chars to avoid false positives on "a b" or "to a"
 _SPACED_CHARS = re.compile(r"(?<!\w)(\w(?:\s\w){2,})(?!\w)")
 
-# Repeated characters: "boooomb" → "bomb"
 _REPEAT_PATTERN = re.compile(r"(.)\1{2,}")
 
 
 def _normalize_obfuscation(text: str) -> str:
-    """Normalize leetspeak, separators, and repeated chars for blocklist matching.
-
-    Examples:
-        "b0mb"        → "bomb"
-        "su1c1de"     → "suicide"
-        "p.o.r.n"     → "porn"
-        "k!ll mys3lf" → "kill myself"  (spaces between words preserved)
-        "t3rror1st"   → "terrorist"
-        "naaaked"     → "naked"
-        "b o m b"     → "bomb"
-        "s3lf-h4rm"   → "self-harm" → "selfharm"
-    """
     t = text.lower()
-    # Collapse spaced single-char chains: "b o m b" → "bomb"
     t = _SPACED_CHARS.sub(lambda m: m.group().replace(" ", ""), t)
-    # Strip non-space punctuation separators: "b.o.m.b" → "bomb", "self-harm" → "selfharm"
     t = _PUNCTUATION_SEPARATOR.sub("", t)
-    # Apply leetspeak substitutions
     t = t.translate(_LEET_MAP)
-    # Collapse repeated characters (3+ → 1): "boooomb" → "bomb"
     t = _REPEAT_PATTERN.sub(r"\1", t)
     return t
 
@@ -126,12 +96,9 @@ class SafetyResult:
 
 
 class BlocklistChecker:
-    """Microsecond-fast blocklist check with obfuscation normalization."""
-
     _instance: "BlocklistChecker | None" = None
 
     def __init__(self):
-        # Pre-normalize all blocklist terms so "self-harm" also matches as "selfharm"
         self._all_term_sets = [NSFW_TERMS, VIOLENCE_TERMS, SELF_HARM_TERMS, TRAGEDY_TERMS]
         self._normalized_terms: list[set[str]] = []
         for term_set in self._all_term_sets:
@@ -139,8 +106,6 @@ class BlocklistChecker:
             for term in term_set:
                 normalized.add(term)
                 n = _normalize_obfuscation(term)
-                # Only add normalized form if it's meaningful (>1 char)
-                # Prevents "xxx" → "x" matching in every word containing 'x'
                 if n != term and len(n) > 1:
                     normalized.add(n)
             self._normalized_terms.append(normalized)
@@ -168,8 +133,6 @@ class BlocklistChecker:
 
 
 class SafetyClassifier:
-    """ML-based safety scoring using toxicity model + danger embeddings."""
-
     _instance: "SafetyClassifier | None" = None
     _cache: OrderedDict[str, SafetyResult] = OrderedDict()
     _cache_max_size: int = 10000
@@ -181,9 +144,6 @@ class SafetyClassifier:
 
     def __init__(self):
         self._embedding_model = EmbeddingModel.get_instance()
-        # Stack anchor embeddings into matrices for vectorized cosine sim
-        # Embeddings are already L2-normalized by sentence-transformers,
-        # so cosine sim = dot product (skip norm computation)
         self._dangerous_mat = np.vstack([
             self._embedding_model.encode(a).flatten() for a in DANGEROUS_ANCHORS
         ])
@@ -212,8 +172,6 @@ class SafetyClassifier:
 
     def _get_danger_score(self, query: str, query_embedding: np.ndarray | None = None) -> tuple[float, float]:
         q_emb = query_embedding if query_embedding is not None else self._embedding_model.encode(query).flatten()
-        # Vectorized dot product against all anchors at once
-        # Embeddings are L2-normalized, so dot product = cosine similarity
         max_danger = float((self._dangerous_mat @ q_emb).max())
         max_safe = float((self._safe_mat @ q_emb).max())
         return max_danger, max_safe
@@ -227,10 +185,6 @@ class SafetyClassifier:
         return probs[0][1].item()
 
     def classify(self, query: str, query_embedding: np.ndarray | None = None) -> SafetyResult:
-        """
-        Classify query safety. Returns SafetyResult with base_score,
-        raw toxicity, and danger_diff for downstream use.
-        """
         normalized = query.lower().strip()
         if normalized in self._cache:
             return self._cache[normalized]

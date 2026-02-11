@@ -9,7 +9,6 @@ from rank_bm25 import BM25Okapi
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
-# Simple tokenizer: lowercase, split on non-alphanumeric, remove short tokens
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
@@ -18,8 +17,6 @@ def _tokenize(text: str) -> list[str]:
 
 
 class BM25Index:
-    """Lexical search using BM25Okapi over campaign text."""
-
     _instance: "BM25Index | None" = None
 
     _cache: OrderedDict[str, list[tuple[str, float]]] = OrderedDict()
@@ -79,7 +76,6 @@ class BM25Index:
 
         scores = self.index.get_scores(tokens)
 
-        # Get top-k indices using argpartition: O(n + k log k) instead of O(n log n)
         scores = np.asarray(scores)
         k = min(top_k, len(scores))
         if k == 0:
