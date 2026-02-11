@@ -38,6 +38,8 @@ VIOLENCE_TERMS = {
     "bomb", "pipe bomb", "explosive", "terrorist", "terrorism",
     "mass shooting", "school shooting", "kill people", "murder someone",
     "assassinate", "attack planning",
+    "how to hack", "hack someone", "steal identity",
+    "drugs without a prescription", "buy drugs online", "illegal drugs",
 }
 
 SELF_HARM_TERMS = {
@@ -241,7 +243,7 @@ class SafetyClassifier:
         if danger_diff > self.DANGER_BLOCK_THRESHOLD or toxicity > self.TOXICITY_BLOCK_THRESHOLD:
             result = SafetyResult(is_blocked=True, base_score=0.0, toxicity=toxicity, danger_diff=danger_diff)
         else:
-            base_score = 0.5
+            base_score = 0.7
             if danger_diff > 0:
                 base_score -= danger_diff * self.DANGER_PENALTY_WEIGHT
             base_score -= toxicity * self.TOXICITY_PENALTY_WEIGHT

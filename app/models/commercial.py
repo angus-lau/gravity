@@ -10,18 +10,22 @@ from app.models.safety import SafetyResult
 SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
 
 COMMERCIAL_SIGNALS = {
-    "buy", "purchase", "order", "shop", "deal", "deals", "discount",
+    "buy", "purchase", "order", "shop", "deals", "discount",
     "coupon", "sale", "cheap", "affordable", "price", "cost",
     "best", "top", "top rated", "review", "reviews", "compare", "vs",
     "recommend", "recommendation", "recommended",
     "where to buy", "where can i buy", "how much", "for sale",
+    "great deal", "good deal", "best deal",
 }
+
+# Phrases that look like commercial signals but aren't
+COMMERCIAL_EXCLUSIONS = {"deal with", "deal breaker", "dealing with"}
 
 SENSITIVE_TERMS = {
     "depression", "anxiety", "stressed", "mental health", "therapy",
     "counseling", "psychiatrist",
-    "unemployment", "bankrupt", "bankruptcy", "debt", "foreclosure",
-    "eviction", "homeless",
+    "unemployment", "laid off", "bankrupt", "bankruptcy", "debt", "foreclosure",
+    "eviction", "homeless", "fired from",
     "divorce", "separation", "breakup", "cheating", "affair",
     "disease", "illness", "symptoms", "diagnosis",
 }
@@ -37,8 +41,10 @@ class CommercialIntentClassifier:
 
     COMMERCIAL_BOOST = 0.45
     SENSITIVE_PENALTY = 0.15
-    SENTIMENT_BOOST_WEIGHT = 0.2
+    SENTIMENT_BOOST_WEIGHT = 0.3
     TOXICITY_HIGH_THRESHOLD = 0.4
+    AD_SAFE_BOOST = 0.15
+    AD_SAFE_DANGER_THRESHOLD = 0.2
 
     def __init__(self):
         from onnxruntime import SessionOptions
@@ -62,6 +68,9 @@ class CommercialIntentClassifier:
         return cls._instance
 
     def _has_commercial_intent(self, q_lower: str) -> bool:
+        for exclusion in COMMERCIAL_EXCLUSIONS:
+            if exclusion in q_lower:
+                return False
         for signal in COMMERCIAL_SIGNALS:
             if signal in q_lower:
                 return True
@@ -109,10 +118,9 @@ class CommercialIntentClassifier:
         if is_sensitive:
             base_score -= self.SENSITIVE_PENALTY
 
-        if (
-            not is_sensitive
-            and safety.toxicity < self.TOXICITY_HIGH_THRESHOLD
-        ):
+        if not is_sensitive and safety.toxicity < self.TOXICITY_HIGH_THRESHOLD:
+            if safety.danger_diff < self.AD_SAFE_DANGER_THRESHOLD:
+                base_score += self.AD_SAFE_BOOST
             sentiment = self._get_sentiment_score(query)
             if sentiment > 0.5:
                 base_score += (sentiment - 0.5) * self.SENTIMENT_BOOST_WEIGHT
@@ -142,12 +150,11 @@ class CommercialIntentClassifier:
         if is_sensitive:
             base_score -= self.SENSITIVE_PENALTY
 
-        if (
-            not is_sensitive
-            and safety.toxicity < self.TOXICITY_HIGH_THRESHOLD
-            and sentiment > 0.5
-        ):
-            base_score += (sentiment - 0.5) * self.SENTIMENT_BOOST_WEIGHT
+        if not is_sensitive and safety.toxicity < self.TOXICITY_HIGH_THRESHOLD:
+            if safety.danger_diff < self.AD_SAFE_DANGER_THRESHOLD:
+                base_score += self.AD_SAFE_BOOST
+            if sentiment > 0.5:
+                base_score += (sentiment - 0.5) * self.SENTIMENT_BOOST_WEIGHT
 
         score = max(0.0, min(1.0, base_score))
 
