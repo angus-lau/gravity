@@ -57,6 +57,7 @@ class ResponseMetadata(BaseModel):
     model_versions: dict[str, str] | None = None
     query_embedding_dim: int | None = None
     candidates_before_rerank: int | None = None
+    expanded_query: str | None = None
 
     model_config = {"extra": "allow"}
 

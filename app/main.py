@@ -127,7 +127,7 @@ async def retrieve(request: RetrievalRequest):
 
         t0 = time.perf_counter()
         ctx = request.context.model_dump() if request.context else None
-        embedding = embedding_model.encode_query(request.query, ctx)
+        embedding, expanded_query = embedding_model.encode_query(request.query, ctx)
         timing["embedding_ms"] = (time.perf_counter() - t0) * 1000
 
         t0 = time.perf_counter()
@@ -152,8 +152,8 @@ async def retrieve(request: RetrievalRequest):
         def compute_embedding():
             t0 = time.perf_counter()
             ctx = request.context.model_dump() if request.context else None
-            emb = embedding_model.encode_query(request.query, ctx)
-            return emb, (time.perf_counter() - t0) * 1000
+            emb, exp = embedding_model.encode_query(request.query, ctx)
+            return emb, exp, (time.perf_counter() - t0) * 1000
 
         def compute_bm25():
             t0 = time.perf_counter()
@@ -175,7 +175,7 @@ async def retrieve(request: RetrievalRequest):
         (
             (safety_result, timing["safety_ms"]),
             (precomputed_sentiment, timing["commercial_ms"]),
-            (embedding, timing["embedding_ms"]),
+            (embedding, expanded_query, timing["embedding_ms"]),
             (bm25_candidates, timing["bm25_search_ms"]),
         ) = await asyncio.gather(safety_future, sentiment_future, emb_future, bm25_future)
 
@@ -312,6 +312,7 @@ async def retrieve(request: RetrievalRequest):
             },
             query_embedding_dim=384,
             candidates_before_rerank=len(candidates),
+            expanded_query=expanded_query if expanded_query != request.query else None,
         ),
     )
 

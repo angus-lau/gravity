@@ -63,8 +63,7 @@ class EmbeddingModel:
             if context.get("interests"):
                 parts.append(" ".join(context["interests"]))
         combined = " ".join(parts)
-        # Use same cache key format as encode() to avoid double-caching
-        return self.encode(combined)
+        return self.encode(combined), expanded
 
 
 @lru_cache(maxsize=1)
